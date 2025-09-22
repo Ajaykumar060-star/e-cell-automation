@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+
+{% block title %}Reports - Exam Management System{% endblock %}
+{% block page_title %}Reports{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Reports Dashboard</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-4">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-people fs-1 text-primary mb-3"></i>
+                                    <h5 class="card-title">Student Reports</h5>
+                                    <p class="card-text">View student enrollment, attendance, and performance reports.</p>
+                                    <button class="btn btn-primary" onclick="generateStudentReport()">
+                                        <i class="bi bi-file-earmark-bar-graph me-1"></i>Generate Report
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-calendar-event fs-1 text-success mb-3"></i>
+                                    <h5 class="card-title">Exam Reports</h5>
+                                    <p class="card-text">View exam schedules, hall allocations, and results.</p>
+                                    <button class="btn btn-success" onclick="generateExamReport()">
+                                        <i class="bi bi-file-earmark-bar-graph me-1"></i>Generate Report
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-building fs-1 text-warning mb-3"></i>
+                                    <h5 class="card-title">Hall Reports</h5>
+                                    <p class="card-text">View hall utilization, capacity, and allocation reports.</p>
+                                    <button class="btn btn-warning" onclick="generateHallReport()">
+                                        <i class="bi bi-file-earmark-bar-graph me-1"></i>Generate Report
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0">Custom Report Generator</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-3 mb-3">
+                                            <label for="reportType" class="form-label">Report Type</label>
+                                            <select class="form-select" id="reportType">
+                                                <option value="students">Students</option>
+                                                <option value="staff">Staff</option>
+                                                <option value="halls">Halls</option>
+                                                <option value="exams">Exams</option>
+                                                <option value="attendance">Attendance</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <label for="dateFrom" class="form-label">From Date</label>
+                                            <input type="date" class="form-control" id="dateFrom">
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <label for="dateTo" class="form-label">To Date</label>
+                                            <input type="date" class="form-control" id="dateTo">
+                                        </div>
+                                        <div class="col-md-3 mb-3 d-flex align-items-end">
+                                            <button class="btn btn-primary w-100" onclick="generateCustomReport()">
+                                                <i class="bi bi-file-earmark-bar-graph me-1"></i>Generate
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="alert alert-info mt-3">
+                                        <i class="bi bi-info-circle me-2"></i>
+                                        Leave date fields empty to generate reports for all records.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="card-title mb-0">Recent Reports</h5>
+                                    <button class="btn btn-outline-primary btn-sm" onclick="refreshReports()">
+                                        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                                    </button>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>Report Name</th>
+                                                    <th>Generated On</th>
+                                                    <th>Type</th>
+                                                    <th>Status</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="reportsTableBody">
+                                                <tr>
+                                                    <td>Student Enrollment Report</td>
+                                                    <td>2023-10-15 14:30</td>
+                                                    <td>Students</td>
+                                                    <td><span class="badge bg-success">Completed</span></td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-outline-primary" title="Download">
+                                                            <i class="bi bi-download"></i>
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-danger" title="Delete">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Exam Schedule Report</td>
+                                                    <td>2023-10-10 09:15</td>
+                                                    <td>Exams</td>
+                                                    <td><span class="badge bg-success">Completed</span></td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-outline-primary" title="Download">
+                                                            <i class="bi bi-download"></i>
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-danger" title="Delete">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Hall Utilization Report</td>
+                                                    <td>2023-10-05 16:45</td>
+                                                    <td>Halls</td>
+                                                    <td><span class="badge bg-success">Completed</span></td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-outline-primary" title="Download">
+                                                            <i class="bi bi-download"></i>
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-danger" title="Delete">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Report Preview Modal -->
+<div class="modal fade" id="reportPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reportPreviewTitle">Report Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="reportPreviewContent">
+                    <!-- Report preview will be loaded here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" onclick="downloadReport()">
+                    <i class="bi bi-download me-1"></i>Download Report
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function generateStudentReport() {
+    showNotification('Generating student report... This may take a moment.', 'info');
+    
+    // Simulate report generation
+    setTimeout(() => {
+        // In a real implementation, this would generate actual report data
+        const reportData = {
+            title: "Student Enrollment Report",
+            generatedOn: new Date().toLocaleString(),
+            totalStudents: 150,
+            departmentBreakdown: [
+                { department: "Computer Science", count: 45 },
+                { department: "Electronics", count: 35 },
+                { department: "Mechanical", count: 40 },
+                { department: "Civil", count: 30 }
+            ],
+            yearBreakdown: [
+                { year: "1st", count: 40 },
+                { year: "2nd", count: 35 },
+                { year: "3rd", count: 40 },
+                { year: "4th", count: 35 }
+            ]
+        };
+        
+        showReportPreview(reportData);
+    }, 2000);
+}
+
+function generateExamReport() {
+    showNotification('Generating exam report... This may take a moment.', 'info');
+    
+    // Simulate report generation
+    setTimeout(() => {
+        // In a real implementation, this would generate actual report data
+        const reportData = {
+            title: "Exam Schedule Report",
+            generatedOn: new Date().toLocaleString(),
+            totalExams: 12,
+            upcomingExams: 8,
+            completedExams: 4,
+            departmentBreakdown: [
+                { department: "Computer Science", count: 4 },
+                { department: "Electronics", count: 3 },
+                { department: "Mechanical", count: 3 },
+                { department: "Civil", count: 2 }
+            ]
+        };
+        
+        showReportPreview(reportData);
+    }, 2000);
+}
+
+function generateHallReport() {
+    showNotification('Generating hall report... This may take a moment.', 'info');
+    
+    // Simulate report generation
+    setTimeout(() => {
+        // In a real implementation, this would generate actual report data
+        const reportData = {
+            title: "Hall Utilization Report",
+            generatedOn: new Date().toLocaleString(),
+            totalHalls: 5,
+            totalCapacity: 490,
+            utilizationRate: "78%",
+            halls: [
+                { name: "Main Hall A", capacity: 100, utilization: "85%" },
+                { name: "Main Hall B", capacity: 80, utilization: "70%" },
+                { name: "Lab Hall C", capacity: 60, utilization: "90%" },
+                { name: "Auditorium", capacity: 200, utilization: "65%" },
+                { name: "Seminar Hall", capacity: 50, utilization: "95%" }
+            ]
+        };
+        
+        showReportPreview(reportData);
+    }, 2000);
+}
+
+function generateCustomReport() {
+    const reportType = document.getElementById('reportType').value;
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    
+    showNotification(`Generating ${reportType} report... This may take a moment.`, 'info');
+    
+    // Simulate report generation
+    setTimeout(() => {
+        // In a real implementation, this would generate actual report data based on parameters
+        const reportData = {
+            title: `${reportType.charAt(0).toUpperCase() + reportType.slice(1)} Report`,
+            generatedOn: new Date().toLocaleString(),
+            dateRange: dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : "All records",
+            recordCount: Math.floor(Math.random() * 100) + 50
+        };
+        
+        showReportPreview(reportData);
+    }, 2000);
+}
+
+function showReportPreview(reportData) {
+    document.getElementById('reportPreviewTitle').textContent = reportData.title;
+    
+    let content = `
+        <div class="container-fluid">
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <h4>${reportData.title}</h4>
+                    <p><strong>Generated on:</strong> ${reportData.generatedOn}</p>
+                    ${reportData.dateRange ? `<p><strong>Date Range:</strong> ${reportData.dateRange}</p>` : ''}
+                </div>
+            </div>
+    `;
+    
+    if (reportData.totalStudents !== undefined) {
+        content += `
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Summary</h5>
+                            <p><strong>Total Students:</strong> ${reportData.totalStudents}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">By Year</h5>
+                            <ul>
+        `;
+        
+        if (reportData.yearBreakdown) {
+            reportData.yearBreakdown.forEach(item => {
+                content += `<li>${item.year}: ${item.count} students</li>`;
+            });
+        }
+        
+        content += `
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    if (reportData.totalExams !== undefined) {
+        content += `
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Exam Statistics</h5>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <p><strong>Total Exams:</strong> ${reportData.totalExams}</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p><strong>Upcoming:</strong> ${reportData.upcomingExams}</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p><strong>Completed:</strong> ${reportData.completedExams}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    if (reportData.totalHalls !== undefined) {
+        content += `
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Hall Information</h5>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <p><strong>Total Halls:</strong> ${reportData.totalHalls}</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p><strong>Total Capacity:</strong> ${reportData.totalCapacity}</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p><strong>Utilization Rate:</strong> ${reportData.utilizationRate}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    if (reportData.recordCount !== undefined) {
+        content += `
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Report Summary</h5>
+                            <p><strong>Records Found:</strong> ${reportData.recordCount}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    content += `
+        </div>
+    `;
+    
+    document.getElementById('reportPreviewContent').innerHTML = content;
+    
+    const modal = new bootstrap.Modal(document.getElementById('reportPreviewModal'));
+    modal.show();
+}
+
+function downloadReport() {
+    showNotification('Report downloaded successfully!', 'success');
+    bootstrap.Modal.getInstance(document.getElementById('reportPreviewModal')).hide();
+}
+
+function refreshReports() {
+    showNotification('Refreshing reports list...', 'info');
+    setTimeout(() => {
+        showNotification('Reports list refreshed', 'success');
+    }, 1000);
+}
+</script>
+{% endblock %}

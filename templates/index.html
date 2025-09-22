@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Stats cards -->
+    <div class="row">
+        <div class="col-md-3 mb-4">
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="card-title">Total Students</h5>
+                            <h2 id="totalStudents">0</h2>
+                        </div>
+                        <i class="bi bi-people fs-1"></i>
+                    </div>
+                    <p class="card-text">Registered students</p>
+                    <div class="progress mt-2">
+                        <div id="studentProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="card-title">Total Staff</h5>
+                            <h2 id="totalStaff">0</h2>
+                        </div>
+                        <i class="bi bi-person-badge fs-1"></i>
+                    </div>
+                    <p class="card-text">Available staff</p>
+                    <div class="progress mt-2">
+                        <div id="staffProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card bg-warning text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="card-title">Total Halls</h5>
+                            <h2 id="totalHalls">0</h2>
+                        </div>
+                        <i class="bi bi-building fs-1"></i>
+                    </div>
+                    <p class="card-text">Active halls</p>
+                    <div class="progress mt-2">
+                        <div id="hallProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card bg-info text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="card-title">Upcoming Exams</h5>
+                            <h2 id="upcomingExams">0</h2>
+                        </div>
+                        <i class="bi bi-calendar-event fs-1"></i>
+                    </div>
+                    <p class="card-text">Scheduled exams</p>
+                    <div class="progress mt-2">
+                        <div id="examProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <button class="btn btn-primary w-100" onclick="loadStudents()">
+                                <i class="bi bi-people me-2"></i>Add Students
+                            </button>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <button class="btn btn-secondary w-100" onclick="loadStaff()">
+                                <i class="bi bi-person-badge me-2"></i>Add Staff
+                            </button>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <button class="btn btn-success w-100" onclick="loadHalls()">
+                                <i class="bi bi-building me-2"></i>Manage Halls
+                            </button>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <button class="btn btn-warning w-100" onclick="loadExams()">
+                                <i class="bi bi-calendar-event me-2"></i>Schedule Exams
+                            </button>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <button class="btn btn-info w-100" onclick="loadHallTickets()">
+                                <i class="bi bi-ticket-perforated me-2"></i>Generate Tickets
+                            </button>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <button class="btn btn-danger w-100" onclick="loadReports()">
+                                <i class="bi bi-bar-chart me-2"></i>View Reports
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title">Upcoming Exams</h5>
+                </div>
+                <div class="card-body">
+                    <div id="upcomingExamsList">
+                        <p class="text-muted">No upcoming exams</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="row mt-4">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title">Recent Activity</h5>
+                </div>
+                <div class="card-body">
+                    <div id="recentActivity">
+                        <p class="text-muted">No recent activity</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title">System Status</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Database Connection</span>
+                        <span class="badge bg-success">Connected</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>File Uploads</span>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Authentication</span>
+                        <span class="badge bg-success">Secure</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Last Backup</span>
+                        <span class="badge bg-warning">2 days ago</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Load dashboard data when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        loadDashboardData();
+    });
+
+    function loadDashboardData() {
+        // Fetch dashboard data from API
+        fetch('/api/dashboard')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('totalStudents').textContent = data.total_students;
+                document.getElementById('totalStaff').textContent = data.total_staff;
+                document.getElementById('totalHalls').textContent = data.total_halls;
+                document.getElementById('upcomingExams').textContent = data.total_exams;
+                
+                // Update progress bars
+                updateProgressBars(data);
+                
+                // Display recent exams
+                const examsList = document.getElementById('upcomingExamsList');
+                if (data.recent_exams && data.recent_exams.length > 0) {
+                    examsList.innerHTML = '';
+                    data.recent_exams.forEach(exam => {
+                        const examElement = document.createElement('div');
+                        examElement.className = 'mb-2 p-2 border rounded';
+                        examElement.innerHTML = `
+                            <strong>${exam.subject}</strong><br>
+                            <small class="text-muted">
+                                ${exam.date} at ${exam.time} | 
+                                Hall: ${exam.hall_name || 'N/A'} | 
+                                Staff: ${exam.staff_name || 'N/A'}
+                            </small>
+                        `;
+                        examsList.appendChild(examElement);
+                    });
+                } else {
+                    examsList.innerHTML = '<p class="text-muted">No upcoming exams</p>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching dashboard data:', error);
+                showNotification('Error loading dashboard data', 'danger');
+            });
+    }
+    
+    function updateProgressBars(data) {
+        // Simple progress bar updates based on counts
+        const studentProgress = Math.min(100, data.total_students);
+        const staffProgress = Math.min(100, data.total_staff * 5);
+        const hallProgress = Math.min(100, data.total_halls * 10);
+        const examProgress = Math.min(100, data.total_exams * 20);
+        
+        document.getElementById('studentProgress').style.width = studentProgress + '%';
+        document.getElementById('staffProgress').style.width = staffProgress + '%';
+        document.getElementById('hallProgress').style.width = hallProgress + '%';
+        document.getElementById('examProgress').style.width = examProgress + '%';
+    }
+
+    // Navigation functions
+    function loadStudents() {
+        window.location.href = '/students';
+    }
+
+    function loadStaff() {
+        window.location.href = '/staff';
+    }
+
+    function loadHalls() {
+        window.location.href = '/halls';
+    }
+    
+    function loadExams() {
+        window.location.href = '/exams';
+    }
+
+    function loadHallTickets() {
+        window.location.href = '/hall_tickets';
+    }
+
+    function loadReports() {
+        window.location.href = '/reports';
+    }
+
+    function loadAttendance() {
+        window.location.href = '/attendance';
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance - Exam Management System{% endblock %}
+{% block page_title %}Attendance Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Attendance Records</h5>
+                    <button class="btn btn-primary" onclick="showMarkAttendanceModal()">
+                        <i class="bi bi-clipboard-plus me-1"></i>Mark Attendance
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <label for="examSelect" class="form-label">Select Exam</label>
+                            <select class="form-select" id="examSelect" onchange="loadAttendanceForExam()">
+                                <option value="">Choose an exam</option>
+                                <!-- Exams will be loaded here -->
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="attendanceStatusFilter" class="form-label">Filter by Status</label>
+                            <select class="form-select" id="attendanceStatusFilter" onchange="filterAttendanceByStatus()">
+                                <option value="">All Statuses</option>
+                                <option value="Present">Present</option>
+                                <option value="Absent">Absent</option>
+                                <option value="Late">Late</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button class="btn btn-outline-secondary w-100" onclick="showAttendanceSummary()">
+                                <i class="bi bi-bar-chart me-1"></i>View Summary
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Student ID</th>
+                                    <th>Student Name</th>
+                                    <th>Subject</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Remarks</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="attendanceTableBody">
+                                <!-- Attendance records will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load data when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadExamsForSelection();
+    loadExamsForAttendance();
+});
+
+let currentAttendanceData = []; // Store current attendance data for filtering
+
+function loadExamsForSelection() {
+    fetch('/api/exams')
+        .then(response => response.json())
+        .then(exams => {
+            const select = document.getElementById('examSelect');
+            select.innerHTML = '<option value="">Choose an exam</option>';
+            
+            exams.forEach(exam => {
+                const option = document.createElement('option');
+                option.value = exam.id;
+                option.textContent = `${exam.subject} - ${exam.date}`;
+                select.appendChild(option);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading exams:', error);
+            showNotification('Error loading exams', 'danger');
+        });
+}
+
+function loadExamsForAttendance() {
+    fetch('/api/exams')
+        .then(response => response.json())
+        .then(exams => {
+            const select = document.getElementById('attendanceExam');
+            select.innerHTML = '<option value="">Select Exam</option>';
+            
+            exams.forEach(exam => {
+                const option = document.createElement('option');
+                option.value = exam.id;
+                option.textContent = `${exam.subject} - ${exam.date}`;
+                select.appendChild(option);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading exams:', error);
+            showNotification('Error loading exams', 'danger');
+        });
+}
+
+function loadAttendanceForExam() {
+    const examId = document.getElementById('examSelect').value;
+    
+    if (!examId) {
+        document.getElementById('attendanceTableBody').innerHTML = '';
+        return;
+    }
+    
+    // Fetch attendance records for the selected exam
+    fetch('/api/attendances')
+        .then(response => response.json())
+        .then(attendances => {
+            // Filter attendances for the selected exam
+            const examAttendances = attendances.filter(att => att.exam_id == examId);
+            currentAttendanceData = examAttendances; // Store for filtering
+            
+            displayAttendanceRecords(examAttendances);
+        })
+        .catch(error => {
+            console.error('Error loading attendance:', error);
+            showNotification('Error loading attendance records', 'danger');
+        });
+}
+
+function displayAttendanceRecords(attendances) {
+    const tbody = document.getElementById('attendanceTableBody');
+    tbody.innerHTML = '';
+    
+    if (attendances.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td colspan="7" class="text-center">No attendance records found for this exam</td>`;
+        tbody.appendChild(row);
+        return;
+    }
+    
+    attendances.forEach(attendance => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${attendance.student_id}</td>
+            <td>${attendance.student_name || 'N/A'}</td>
+            <td>${attendance.exam_subject || 'N/A'}</td>
+            <td>${formatDate(attendance.created_at)}</td>
+            <td>
+                <span class="badge bg-${attendance.status === 'Present' ? 'success' : attendance.status === 'Absent' ? 'danger' : 'warning'}">
+                    ${attendance.status}
+                </span>
+            </td>
+            <td>${attendance.remarks || ''}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="editAttendance(${attendance.id})">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteAttendance(${attendance.id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function filterAttendanceByStatus() {
+    const statusFilter = document.getElementById('attendanceStatusFilter').value;
+    
+    let filteredAttendance = currentAttendanceData;
+    
+    if (statusFilter) {
+        filteredAttendance = currentAttendanceData.filter(att => att.status === statusFilter);
+    }
+    
+    displayAttendanceRecords(filteredAttendance);
+}
+
+function loadStudentsForExam() {
+    const examId = document.getElementById('attendanceExam').value;
+    
+    if (!examId) {
+        document.getElementById('attendanceStudent').innerHTML = '<option value="">Select Student</option>';
+        return;
+    }
+    
+    // In a real implementation, you might want to load students registered for this specific exam
+    // For now, we'll load all students
+    fetch('/api/students')
+        .then(response => response.json())
+        .then(students => {
+            const select = document.getElementById('attendanceStudent');
+            select.innerHTML = '<option value="">Select Student</option>';
+            
+            students.forEach(student => {
+                const option = document.createElement('option');
+                option.value = student.id;
+                option.textContent = `${student.name} (${student.id})`;
+                select.appendChild(option);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading students:', error);
+            showNotification('Error loading students', 'danger');
+        });
+}
+
+function showMarkAttendanceModal() {
+    document.getElementById('attendanceModalLabel').textContent = 'Mark Attendance';
+    document.getElementById('attendanceForm').reset();
+    document.getElementById('attendanceId').value = '';
+    
+    // Reload dropdowns
+    loadExamsForAttendance();
+    
+    const modal = new bootstrap.Modal(document.getElementById('attendanceModal'));
+    modal.show();
+}
+
+function editAttendance(id) {
+    fetch(`/api/attendances/${id}`)
+        .then(response => response.json())
+        .then(attendance => {
+            document.getElementById('attendanceModalLabel').textContent = 'Edit Attendance';
+            document.getElementById('attendanceId').value = attendance.id;
+            document.getElementById('attendanceExam').value = attendance.exam_id;
+            document.getElementById('attendanceStudent').value = attendance.student_id;
+            document.getElementById('attendanceStatus').value = attendance.status;
+            document.getElementById('attendanceRemarks').value = attendance.remarks || '';
+            
+            // Load students for the selected exam
+            loadStudentsForExam();
+            
+            const modal = new bootstrap.Modal(document.getElementById('attendanceModal'));
+            modal.show();
+        })
+        .catch(error => {
+            console.error('Error loading attendance:', error);
+            showNotification('Error loading attendance record', 'danger');
+        });
+}
+
+function saveAttendance() {
+    const id = document.getElementById('attendanceId').value;
+    const attendanceData = {
+        student_id: parseInt(document.getElementById('attendanceStudent').value),
+        exam_id: parseInt(document.getElementById('attendanceExam').value),
+        status: document.getElementById('attendanceStatus').value,
+        remarks: document.getElementById('attendanceRemarks').value
+    };
+    
+    // Validate required fields
+    if (!attendanceData.student_id || !attendanceData.exam_id || !attendanceData.status) {
+        showNotification('Please fill in all required fields', 'warning');
+        return;
+    }
+    
+    const url = id ? `/api/attendances/${id}` : '/api/attendances';
+    const method = id ? 'PUT' : 'POST';
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(attendanceData)
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        } else {
+            return response.json().then(err => { throw new Error(err.error || 'Failed to save attendance'); });
+        }
+    })
+    .then(attendance => {
+        showNotification('Attendance saved successfully', 'success');
+        bootstrap.Modal.getInstance(document.getElementById('attendanceModal')).hide();
+        loadAttendanceForExam();
+    })
+    .catch(error => {
+        console.error('Error saving attendance:', error);
+        showNotification(error.message || 'Error saving attendance', 'danger');
+    });
+}
+
+function deleteAttendance(id) {
+    if (confirm('Are you sure you want to delete this attendance record?')) {
+        fetch(`/api/attendances/${id}`, {
+            method: 'DELETE'
+        })
+        .then(response => {
+            if (response.ok) {
+                showNotification('Attendance record deleted successfully', 'success');
+                loadAttendanceForExam();
+            } else {
+                throw new Error('Failed to delete attendance record');
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting attendance:', error);
+            showNotification('Error deleting attendance record', 'danger');
+        });
+    }
+}
+
+function showAttendanceSummary() {
+    const examId = document.getElementById('examSelect').value;
+    
+    if (!examId) {
+        showNotification('Please select an exam first', 'warning');
+        return;
+    }
+    
+    // Calculate statistics
+    const presentCount = currentAttendanceData.filter(att => att.status === 'Present').length;
+    const absentCount = currentAttendanceData.filter(att => att.status === 'Absent').length;
+    const lateCount = currentAttendanceData.filter(att => att.status === 'Late').length;
+    const totalCount = currentAttendanceData.length;
+    
+    // Display statistics
+    const statsDiv = document.getElementById('attendanceStats');
+    statsDiv.innerHTML = `
+        <p><strong>Total Records:</strong> ${totalCount}</p>
+        <p><strong>Present:</strong> ${presentCount} (${totalCount ? Math.round((presentCount/totalCount)*100) : 0}%)</p>
+        <p><strong>Absent:</strong> ${absentCount} (${totalCount ? Math.round((absentCount/totalCount)*100) : 0}%)</p>
+        <p><strong>Late:</strong> ${lateCount} (${totalCount ? Math.round((lateCount/totalCount)*100) : 0}%)</p>
+    `;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('attendanceSummaryModal'));
+    modal.show();
+}
+</script>
+{% endblock %}

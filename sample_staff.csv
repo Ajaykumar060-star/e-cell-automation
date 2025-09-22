@@ -1,0 +1,6 @@
+name,email,phone,department,role
+Dr. Alan Turing,alan.turing@example.com,5566778899,Computer Science,Professor
+Dr. Marie Curie,marie.curie@example.com,9988776655,Physics,Professor
+Prof. Albert Einstein,albert.einstein@example.com,4433221100,Mathematics,Professor
+Dr. Isaac Newton,isaac.newton@example.com,6677889900,Chemistry,Professor
+Ms. Ada Lovelace,ada.lovelace@example.com,7788990011,Computer Science,Assistant Professor

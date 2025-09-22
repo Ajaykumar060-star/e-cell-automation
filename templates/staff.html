@@ -1,0 +1,422 @@
+{% extends "base.html" %}
+
+{% block title %}Staff - Exam Management System{% endblock %}
+{% block page_title %}Staff Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Staff Management</h5>
+                    <div>
+                        <button class="btn btn-success me-2" onclick="showUploadModal('staff')">
+                            <i class="bi bi-upload me-1"></i>Upload CSV/Excel
+                        </button>
+                        <button class="btn btn-primary" onclick="showAddStaffModal()">
+                            <i class="bi bi-plus-circle me-1"></i>Add Staff
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Search and Filter Section -->
+                    <div class="row mb-3">
+                        <div class="col-md-3 mb-2">
+                            <input type="text" class="form-control" id="searchStaffName" placeholder="Search by name">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <input type="text" class="form-control" id="searchStaffEmail" placeholder="Search by email">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <select class="form-select" id="filterStaffDepartment">
+                                <option value="">All Departments</option>
+                                <!-- Departments will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <select class="form-select" id="filterStaffRole">
+                                <option value="">All Roles</option>
+                                <!-- Roles will be populated dynamically -->
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <button class="btn btn-outline-primary" onclick="applyStaffFilters()">
+                                <i class="bi bi-funnel me-1"></i>Apply Filters
+                            </button>
+                            <button class="btn btn-outline-secondary" onclick="resetStaffFilters()">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Reset
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Department</th>
+                                    <th>Role</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="staffTableBody">
+                                <!-- Staff will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Upload Staff Data</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="uploadForm">
+                    <div class="mb-3">
+                        <label for="uploadFile" class="form-label">Select CSV or Excel file</label>
+                        <input type="file" class="form-control" id="uploadFile" accept=".csv, .xlsx, .xls" required>
+                        <div class="form-text">Supported formats: CSV, Excel (.xlsx, .xls)</div>
+                    </div>
+                    <div class="alert alert-info">
+                        <strong>File Format:</strong> The file should contain columns: name, email, phone, department, role
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="uploadFile('staff')">Upload</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Staff Modal -->
+<div class="modal fade" id="staffModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="staffModalLabel">Add Staff</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="staffForm">
+                    <input type="hidden" id="staffId">
+                    <div class="mb-3">
+                        <label for="staffName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="staffName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="staffEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="staffEmail" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="staffPhone" class="form-label">Phone</label>
+                        <input type="text" class="form-control" id="staffPhone" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="staffDepartment" class="form-label">Department</label>
+                        <input type="text" class="form-control" id="staffDepartment" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="staffRole" class="form-label">Role</label>
+                        <input type="text" class="form-control" id="staffRole" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveStaff()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load staff when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadStaff();
+    loadStaffFilters();
+});
+
+let allStaff = []; // Store all staff for filtering
+
+function loadStaff() {
+    fetch('/api/staff')
+        .then(response => response.json())
+        .then(staff => {
+            allStaff = staff; // Store for filtering
+            displayStaff(staff);
+            populateStaffFilters(staff);
+        })
+        .catch(error => {
+            console.error('Error loading staff:', error);
+            showNotification('Error loading staff', 'danger');
+        });
+}
+
+function displayStaff(staff) {
+    const tbody = document.getElementById('staffTableBody');
+    tbody.innerHTML = '';
+    
+    if (staff.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="7" class="text-center">No staff found</td>';
+        tbody.appendChild(row);
+        return;
+    }
+    
+    staff.forEach(member => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${member.id}</td>
+            <td>${member.name}</td>
+            <td>${member.email}</td>
+            <td>${member.phone}</td>
+            <td>${member.department}</td>
+            <td>${member.role}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="editStaff(${member.id})">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteStaff(${member.id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function loadStaffFilters() {
+    fetch('/api/staff')
+        .then(response => response.json())
+        .then(staff => {
+            populateStaffFilters(staff);
+        })
+        .catch(error => {
+            console.error('Error loading staff filters:', error);
+        });
+}
+
+function populateStaffFilters(staff) {
+    // Populate department filter
+    const departments = [...new Set(staff.map(member => member.department))];
+    const deptSelect = document.getElementById('filterStaffDepartment');
+    
+    // Clear existing options except the first one
+    deptSelect.innerHTML = '<option value="">All Departments</option>';
+    
+    departments.forEach(dept => {
+        const option = document.createElement('option');
+        option.value = dept;
+        option.textContent = dept;
+        deptSelect.appendChild(option);
+    });
+    
+    // Populate role filter
+    const roles = [...new Set(staff.map(member => member.role))];
+    const roleSelect = document.getElementById('filterStaffRole');
+    
+    // Clear existing options except the first one
+    roleSelect.innerHTML = '<option value="">All Roles</option>';
+    
+    roles.forEach(role => {
+        const option = document.createElement('option');
+        option.value = role;
+        option.textContent = role;
+        roleSelect.appendChild(option);
+    });
+}
+
+function applyStaffFilters() {
+    const nameFilter = document.getElementById('searchStaffName').value.toLowerCase();
+    const emailFilter = document.getElementById('searchStaffEmail').value.toLowerCase();
+    const departmentFilter = document.getElementById('filterStaffDepartment').value;
+    const roleFilter = document.getElementById('filterStaffRole').value;
+    
+    let filteredStaff = allStaff;
+    
+    if (nameFilter) {
+        filteredStaff = filteredStaff.filter(member => 
+            member.name.toLowerCase().includes(nameFilter)
+        );
+    }
+    
+    if (emailFilter) {
+        filteredStaff = filteredStaff.filter(member => 
+            member.email.toLowerCase().includes(emailFilter)
+        );
+    }
+    
+    if (departmentFilter) {
+        filteredStaff = filteredStaff.filter(member => 
+            member.department === departmentFilter
+        );
+    }
+    
+    if (roleFilter) {
+        filteredStaff = filteredStaff.filter(member => 
+            member.role === roleFilter
+        );
+    }
+    
+    displayStaff(filteredStaff);
+}
+
+function resetStaffFilters() {
+    document.getElementById('searchStaffName').value = '';
+    document.getElementById('searchStaffEmail').value = '';
+    document.getElementById('filterStaffDepartment').value = '';
+    document.getElementById('filterStaffRole').value = '';
+    displayStaff(allStaff);
+}
+
+function showAddStaffModal() {
+    document.getElementById('staffModalLabel').textContent = 'Add Staff';
+    document.getElementById('staffForm').reset();
+    document.getElementById('staffId').value = '';
+    const modal = new bootstrap.Modal(document.getElementById('staffModal'));
+    modal.show();
+}
+
+function editStaff(id) {
+    fetch(`/api/staff/${id}`)
+        .then(response => response.json())
+        .then(member => {
+            document.getElementById('staffModalLabel').textContent = 'Edit Staff';
+            document.getElementById('staffId').value = member.id;
+            document.getElementById('staffName').value = member.name;
+            document.getElementById('staffEmail').value = member.email;
+            document.getElementById('staffPhone').value = member.phone;
+            document.getElementById('staffDepartment').value = member.department;
+            document.getElementById('staffRole').value = member.role;
+            
+            const modal = new bootstrap.Modal(document.getElementById('staffModal'));
+            modal.show();
+        })
+        .catch(error => {
+            console.error('Error loading staff member:', error);
+            showNotification('Error loading staff member', 'danger');
+        });
+}
+
+function saveStaff() {
+    const id = document.getElementById('staffId').value;
+    const staffData = {
+        name: document.getElementById('staffName').value,
+        email: document.getElementById('staffEmail').value,
+        phone: document.getElementById('staffPhone').value,
+        department: document.getElementById('staffDepartment').value,
+        role: document.getElementById('staffRole').value
+    };
+    
+    // Validate required fields
+    if (!staffData.name || !staffData.email || !staffData.phone || 
+        !staffData.department || !staffData.role) {
+        showNotification('Please fill in all required fields', 'warning');
+        return;
+    }
+    
+    const url = id ? `/api/staff/${id}` : '/api/staff';
+    const method = id ? 'PUT' : 'POST';
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(staffData)
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        } else {
+            return response.json().then(err => { throw new Error(err.error || 'Failed to save staff'); });
+        }
+    })
+    .then(member => {
+        showNotification('Staff saved successfully', 'success');
+        bootstrap.Modal.getInstance(document.getElementById('staffModal')).hide();
+        loadStaff();
+    })
+    .catch(error => {
+        console.error('Error saving staff:', error);
+        showNotification(error.message || 'Error saving staff', 'danger');
+    });
+}
+
+function deleteStaff(id) {
+    if (confirm('Are you sure you want to delete this staff member?')) {
+        fetch(`/api/staff/${id}`, {
+            method: 'DELETE'
+        })
+        .then(response => {
+            if (response.ok) {
+                showNotification('Staff deleted successfully', 'success');
+                loadStaff();
+            } else {
+                throw new Error('Failed to delete staff');
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting staff:', error);
+            showNotification('Error deleting staff', 'danger');
+        });
+    }
+}
+
+function showUploadModal(type) {
+    document.getElementById('uploadForm').reset();
+    const modal = new bootstrap.Modal(document.getElementById('uploadModal'));
+    modal.show();
+}
+
+function uploadFile(type) {
+    const fileInput = document.getElementById('uploadFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        showNotification('Please select a file to upload', 'warning');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    fetch(`/api/upload/${type}`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showNotification(data.error, 'danger');
+        } else {
+            showNotification(data.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+            loadStaff();
+        }
+    })
+    .catch(error => {
+        console.error('Error uploading file:', error);
+        showNotification('Error uploading file', 'danger');
+    });
+}
+</script>
+{% endblock %}

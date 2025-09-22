@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Allotted Students - AJAY COLLEGE EXAM CELL{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">Allotted Students History</h1>
+    
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Allotted Exams</h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="allottedTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Exam ID</th>
+                            <th>Subject</th>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Hall</th>
+                            <th>Department</th>
+                            <th>Year</th>
+                            <th>No. of Students</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Data will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    // Load allotted students data
+    function loadAllottedStudents() {
+        $.ajax({
+            url: '/api/allotted_students',
+            method: 'GET',
+            success: function(response) {
+                var table = $('#allottedTable tbody');
+                table.empty();
+                
+                response.forEach(function(exam) {
+                    var row = '<tr>' +
+                        '<td>' + exam.id + '</td>' +
+                        '<td>' + exam.subject + '</td>' +
+                        '<td>' + exam.date + '</td>' +
+                        '<td>' + exam.time + '</td>' +
+                        '<td>' + exam.hall_name + '</td>' +
+                        '<td>' + exam.department + '</td>' +
+                        '<td>' + exam.year + '</td>' +
+                        '<td>' + (exam.attendances ? exam.attendances.length : 0) + '</td>' +
+                        '<td>' +
+                            '<button class="btn btn-info btn-sm view-details" data-exam-id="' + exam.id + '">View Details</button> ' +
+                            '<button class="btn btn-success btn-sm complete-exam" data-exam-id="' + exam.id + '">Mark Complete</button>' +
+                        '</td>' +
+                    '</tr>';
+                    table.append(row);
+                });
+                
+                // Add event listeners
+                $('.view-details').click(function() {
+                    var examId = $(this).data('exam-id');
+                    viewExamDetails(examId);
+                });
+                
+                $('.complete-exam').click(function() {
+                    var examId = $(this).data('exam-id');
+                    completeExam(examId);
+                });
+            },
+            error: function(xhr) {
+                alert('Error loading allotted students: ' + xhr.responseJSON.error);
+            }
+        });
+    }
+    
+    function viewExamDetails(examId) {
+        // Implement view details functionality
+        alert('View details for exam ' + examId);
+    }
+    
+    function completeExam(examId) {
+        if (confirm('Are you sure you want to mark this exam as completed?')) {
+            $.ajax({
+                url: '/api/exams/' + examId + '/complete',
+                method: 'POST',
+                success: function(response) {
+                    alert(response.message);
+                    loadAllottedStudents(); // Reload the table
+                },
+                error: function(xhr) {
+                    alert('Error completing exam: ' + xhr.responseJSON.error);
+                }
+            });
+        }
+    }
+    
+    // Initial load
+    loadAllottedStudents();
+});
+</script>
+{% endblock %}

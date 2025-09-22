@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+
+{% block title %}Halls - Exam Management System{% endblock %}
+{% block page_title %}Halls Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Halls List</h5>
+                    <div>
+                        <button class="btn btn-success me-2" onclick="showUploadModal('halls')">
+                            <i class="bi bi-upload me-1"></i>Upload CSV/Excel
+                        </button>
+                        <button class="btn btn-primary" onclick="showAddHallModal()">
+                            <i class="bi bi-plus-circle me-1"></i>Add Hall
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Search and Filter Section -->
+                    <div class="row mb-3">
+                        <div class="col-md-3 mb-2">
+                            <input type="text" class="form-control" id="searchHallName" placeholder="Search by name">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <input type="number" class="form-control" id="searchMinCapacity" placeholder="Min capacity">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <input type="number" class="form-control" id="searchMaxCapacity" placeholder="Max capacity">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <input type="text" class="form-control" id="searchHallLocation" placeholder="Search by location">
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <button class="btn btn-outline-primary" onclick="applyHallFilters()">
+                                <i class="bi bi-funnel me-1"></i>Apply Filters
+                            </button>
+                            <button class="btn btn-outline-secondary" onclick="resetHallFilters()">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Reset
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Capacity</th>
+                                    <th>Location</th>
+                                    <th>Facilities</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hallsTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Upload Halls Data</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="uploadForm">
+                    <div class="mb-3">
+                        <label for="uploadFile" class="form-label">Select CSV or Excel file</label>
+                        <input type="file" class="form-control" id="uploadFile" accept=".csv, .xlsx, .xls" required>
+                        <div class="form-text">Supported formats: CSV, Excel (.xlsx, .xls)</div>
+                    </div>
+                    <div class="alert alert-info">
+                        <strong>File Format:</strong> The file should contain columns: name, capacity, location, facilities
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="uploadFile('halls')">Upload</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Hall Modal -->
+<div class="modal fade" id="hallModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="hallModalLabel">Add Hall</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="hallForm">
+                    <input type="hidden" id="hallId">
+                    <div class="mb-3">
+                        <label for="hallName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="hallName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="hallCapacity" class="form-label">Capacity</label>
+                        <input type="number" class="form-control" id="hallCapacity" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="hallLocation" class="form-label">Location</label>
+                        <input type="text" class="form-control" id="hallLocation" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="hallFacilities" class="form-label">Facilities</label>
+                        <textarea class="form-control" id="hallFacilities" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveHall()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load halls when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadHalls();
+});
+
+let allHalls = []; // Store all halls for filtering
+
+function loadHalls() {
+    fetch('/api/halls')
+        .then(response => response.json())
+        .then(halls => {
+            allHalls = halls; // Store for filtering
+            displayHalls(halls);
+        })
+        .catch(error => {
+            console.error('Error loading halls:', error);
+            showNotification('Error loading halls', 'danger');
+        });
+}
+
+function displayHalls(halls) {
+    const tbody = document.getElementById('hallsTableBody');
+    tbody.innerHTML = '';
+    
+    if (halls.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="6" class="text-center">No halls found</td>';
+        tbody.appendChild(row);
+        return;
+    }
+    
+    halls.forEach(hall => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${hall.id}</td>
+            <td>${hall.name}</td>
+            <td>${hall.capacity}</td>
+            <td>${hall.location}</td>
+            <td>${hall.facilities || ''}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="editHall(${hall.id})">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteHall(${hall.id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function applyHallFilters() {
+    const nameFilter = document.getElementById('searchHallName').value.toLowerCase();
+    const minCapacity = document.getElementById('searchMinCapacity').value;
+    const maxCapacity = document.getElementById('searchMaxCapacity').value;
+    const locationFilter = document.getElementById('searchHallLocation').value.toLowerCase();
+    
+    let filteredHalls = allHalls;
+    
+    if (nameFilter) {
+        filteredHalls = filteredHalls.filter(hall => 
+            hall.name.toLowerCase().includes(nameFilter)
+        );
+    }
+    
+    if (minCapacity) {
+        filteredHalls = filteredHalls.filter(hall => 
+            hall.capacity >= parseInt(minCapacity)
+        );
+    }
+    
+    if (maxCapacity) {
+        filteredHalls = filteredHalls.filter(hall => 
+            hall.capacity <= parseInt(maxCapacity)
+        );
+    }
+    
+    if (locationFilter) {
+        filteredHalls = filteredHalls.filter(hall => 
+            hall.location.toLowerCase().includes(locationFilter)
+        );
+    }
+    
+    displayHalls(filteredHalls);
+}
+
+function resetHallFilters() {
+    document.getElementById('searchHallName').value = '';
+    document.getElementById('searchMinCapacity').value = '';
+    document.getElementById('searchMaxCapacity').value = '';
+    document.getElementById('searchHallLocation').value = '';
+    displayHalls(allHalls);
+}
+
+function showAddHallModal() {
+    document.getElementById('hallModalLabel').textContent = 'Add Hall';
+    document.getElementById('hallForm').reset();
+    document.getElementById('hallId').value = '';
+    const modal = new bootstrap.Modal(document.getElementById('hallModal'));
+    modal.show();
+}
+
+function editHall(id) {
+    fetch(`/api/halls/${id}`)
+        .then(response => response.json())
+        .then(hall => {
+            document.getElementById('hallModalLabel').textContent = 'Edit Hall';
+            document.getElementById('hallId').value = hall.id;
+            document.getElementById('hallName').value = hall.name;
+            document.getElementById('hallCapacity').value = hall.capacity;
+            document.getElementById('hallLocation').value = hall.location;
+            document.getElementById('hallFacilities').value = hall.facilities || '';
+            
+            const modal = new bootstrap.Modal(document.getElementById('hallModal'));
+            modal.show();
+        })
+        .catch(error => {
+            console.error('Error loading hall:', error);
+            showNotification('Error loading hall', 'danger');
+        });
+}
+
+function saveHall() {
+    const id = document.getElementById('hallId').value;
+    const hallData = {
+        name: document.getElementById('hallName').value,
+        capacity: parseInt(document.getElementById('hallCapacity').value),
+        location: document.getElementById('hallLocation').value,
+        facilities: document.getElementById('hallFacilities').value
+    };
+    
+    const url = id ? `/api/halls/${id}` : '/api/halls';
+    const method = id ? 'PUT' : 'POST';
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(hallData)
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        } else {
+            throw new Error('Failed to save hall');
+        }
+    })
+    .then(hall => {
+        showNotification('Hall saved successfully', 'success');
+        bootstrap.Modal.getInstance(document.getElementById('hallModal')).hide();
+        loadHalls();
+    })
+    .catch(error => {
+        console.error('Error saving hall:', error);
+        showNotification('Error saving hall', 'danger');
+    });
+}
+
+function deleteHall(id) {
+    if (confirm('Are you sure you want to delete this hall?')) {
+        fetch(`/api/halls/${id}`, {
+            method: 'DELETE'
+        })
+        .then(response => {
+            if (response.ok) {
+                showNotification('Hall deleted successfully', 'success');
+                loadHalls();
+            } else {
+                throw new Error('Failed to delete hall');
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting hall:', error);
+            showNotification('Error deleting hall', 'danger');
+        });
+    }
+}
+
+function showUploadModal(type) {
+    document.getElementById('uploadForm').reset();
+    const modal = new bootstrap.Modal(document.getElementById('uploadModal'));
+    modal.show();
+}
+
+function uploadFile(type) {
+    const fileInput = document.getElementById('uploadFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        showNotification('Please select a file to upload', 'warning');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    fetch(`/api/upload/${type}`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showNotification(data.error, 'danger');
+        } else {
+            showNotification(data.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+            loadHalls();
+        }
+    })
+    .catch(error => {
+        console.error('Error uploading file:', error);
+        showNotification('Error uploading file', 'danger');
+    });
+}
+</script>
+{% endblock %}
