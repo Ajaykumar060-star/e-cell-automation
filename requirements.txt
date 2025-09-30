@@ -1,6 +1,12 @@
 Flask==2.3.2
 Flask-SQLAlchemy==3.0.5
-mysql-connector-python==8.0.33
+SQLAlchemy==2.0.29
+mysql-connector-python==9.0.0
 python-dotenv==1.0.0
-pandas==1.5.3
+pandas==2.2.2
 openpyxl==3.1.2
+pymongo==4.7.2
+reportlab==4.0.4
+qrcode==7.4.2
+Pillow==10.4.0
+Werkzeug==2.3.6

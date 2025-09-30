@@ -10,6 +10,147 @@ import hashlib
 from sqlalchemy import func
 from io import StringIO
 from flask import Response
+from io import BytesIO
+import qrcode
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas
+import zipfile
+import tempfile
+from pymongo import MongoClient, ASCENDING
+from pymongo.errors import DuplicateKeyError
+from bson.objectid import ObjectId
+
+# ----------------------------------------
+# Helpers for Excel/CSV transformations
+# ----------------------------------------
+def transform_excel(file_path: str) -> pd.DataFrame:
+    """Read an Excel/CSV file and return a standardized DataFrame with columns:
+    ID, Name, Email, Phone, Department, Year.
+
+    - Supports alternate headers like SNO/Reg_No for ID, Name of the Student for Name,
+      Dept for Department, year for Year.
+    - If any required column is missing in the source, create it with empty strings.
+    - Only these six columns are returned, in this exact order.
+    """
+    # Read file
+    if file_path.lower().endswith('.csv'):
+        df = pd.read_csv(file_path, dtype=str)
+    elif file_path.lower().endswith(('.xlsx', '.xls')):
+        # Read as strings to avoid numeric coercion (e.g., Reg_No becoming 1.234e+5)
+        df = pd.read_excel(file_path, dtype=str)
+    else:
+        raise ValueError('Unsupported file format. Please upload CSV or Excel.')
+
+    # Normalize source column names
+    source_cols_original = list(df.columns)
+    source_cols = [str(c).strip().lower() for c in source_cols_original]
+    df.columns = source_cols
+
+    def norm_key(s: str) -> str:
+        import re
+        return re.sub(r'[^a-z0-9]+', '', str(s).strip().lower())
+
+    norm_map = {norm_key(col): col for col in df.columns}
+
+    def resolve(*candidates):
+        for cand in candidates:
+            key = norm_key(cand)
+            if key in norm_map:
+                return norm_map[key]
+        return None
+
+    # Resolve aliases
+    id_col = resolve('id', 'sno', 'reg_no', 'reg no', 'regno', 'register no', 'register_no')
+    name_col = resolve('name', 'student_name', 'name of the student')
+    email_col = resolve('email', 'mail id', 'mailid', 'mail-id')
+    phone_col = resolve('phone', 'mobile', 'mobile_no', 'mobile no', 'phone_no', 'phone no')
+    dept_col = resolve('department', 'dept')
+    year_col = resolve('year', 'prog & year', 'prog & year.')
+
+    # Fallback: header might not be in the first row. Try to detect within top 30 rows
+    if not (name_col or email_col or id_col):
+        if file_path.lower().endswith('.csv'):
+            raw = pd.read_csv(file_path, header=None, dtype=str)
+        else:
+            raw = pd.read_excel(file_path, header=None, dtype=str)
+
+        header_idx = None
+        for i in range(min(30, len(raw))):
+            row_vals = [str(x) for x in raw.iloc[i].tolist()]
+            row_norms = [norm_key(x) for x in row_vals]
+            if any(k in row_norms for k in [norm_key('name of the student'), norm_key('name')]):
+                if any(k in row_norms for k in [norm_key('email'), norm_key('reg_no'), norm_key('reg no'), norm_key('regno'), norm_key('sno')]):
+                    header_idx = i
+                    new_cols = [str(x).strip().lower() for x in raw.iloc[i].tolist()]
+                    df = raw.iloc[i+1:].copy()
+                    df.columns = new_cols
+                    # Rebuild maps and resolve
+                    norm_map = {norm_key(col): col for col in df.columns}
+                    id_col = resolve('id', 'sno', 'reg_no', 'reg no', 'regno', 'register no', 'register_no')
+                    name_col = resolve('name', 'student_name', 'name of the student')
+                    email_col = resolve('email', 'mail id', 'mailid', 'mail-id')
+                    phone_col = resolve('phone', 'mobile', 'mobile_no', 'mobile no', 'phone_no', 'phone no')
+                    dept_col = resolve('department', 'dept')
+                    year_col = resolve('year', 'prog & year', 'prog & year.')
+                    break
+
+    # Build output with required columns only
+    out_cols = ['ID', 'Name', 'Email', 'Phone', 'Department', 'Year']
+    out = pd.DataFrame(columns=out_cols)
+
+    # Helper to safely get series, else empty strings
+    def get_series_or_empty(col_name: str):
+        return df[col_name].astype(str).fillna('') if col_name in df.columns else pd.Series([''] * len(df))
+
+    out['ID'] = get_series_or_empty(id_col) if id_col else pd.Series([''] * len(df))
+    out['Name'] = get_series_or_empty(name_col) if name_col else pd.Series([''] * len(df))
+    out['Email'] = get_series_or_empty(email_col) if email_col else pd.Series([''] * len(df))
+    # Clean phone to keep only digits, max 10
+    if phone_col and phone_col in df.columns:
+        cleaned_phone = df[phone_col].astype(str).fillna('')
+        cleaned_phone = cleaned_phone.apply(lambda x: ''.join(ch for ch in x if ch.isdigit())[:10])
+        out['Phone'] = cleaned_phone
+    else:
+        out['Phone'] = pd.Series([''] * len(df))
+
+    out['Department'] = get_series_or_empty(dept_col) if dept_col else pd.Series([''] * len(df))
+    out['Year'] = get_series_or_empty(year_col) if year_col else pd.Series([''] * len(df))
+
+    # Ensure dtypes are strings and trim whitespace
+    for c in out_cols:
+        out[c] = out[c].astype(str).fillna('').map(lambda v: v.strip())
+
+    # Optionally drop completely empty rows (no ID, Name, Email)
+    mask_nonempty = (out['ID'] != '') | (out['Name'] != '') | (out['Email'] != '')
+    out = out[mask_nonempty].reset_index(drop=True)
+
+    return out
+
+# ----------------------------------------
+# MongoDB helpers (only used when USE_MONGO is true)
+# ----------------------------------------
+def mongo_next_sequence(seq_name: str) -> int:
+    if not USE_MONGO:
+        return 0
+    doc = mongo_db.counters.find_one_and_update(
+        {'_id': seq_name},
+        {'$inc': {'seq': 1}},
+        upsert=True,
+        return_document=True
+    )
+    return int(doc.get('seq', 1))
+
+def mongo_student_to_dict(doc: dict) -> dict:
+    return {
+        'id': int(doc.get('id', 0)),
+        'name': doc.get('name', ''),
+        'email': doc.get('email', ''),
+        'phone': doc.get('phone', ''),
+        'department': doc.get('department', ''),
+        'year': doc.get('year', ''),
+        'created_at': (doc.get('created_at').isoformat() if doc.get('created_at') else None)
+    }
 
 # Load environment variables from .env file
 load_dotenv()
@@ -35,6 +176,18 @@ DB_PORT = os.getenv('DB_PORT', '3306')
 _encoded_password = quote_plus(DB_PASSWORD) if DB_PASSWORD else ''
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+mysqlconnector://{DB_USER}:{_encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Optional MongoDB configuration (activate by setting USE_MONGO=true)
+USE_MONGO = os.getenv('USE_MONGO', 'false').strip().lower() == 'true'
+MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
+MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', DB_NAME)
+mongo_client = None
+mongo_db = None
+if USE_MONGO:
+    mongo_client = MongoClient(MONGO_URI)
+    mongo_db = mongo_client[MONGO_DB_NAME]
+    # Ensure indexes
+    mongo_db.students.create_index([('email', ASCENDING)], unique=True)
 
 # File upload configuration
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -199,11 +352,75 @@ class Attendance(db.Model):
             'exam_subject': self.exam.subject if self.exam else None
         }
 
+# New domain models
+class Subject(db.Model):
+    __tablename__ = 'subject'
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(50), nullable=False)
+    title = db.Column(db.String(255), nullable=False)
+    department = db.Column(db.String(50), nullable=True)
+    year = db.Column(db.String(10), nullable=True)
+    __table_args__ = (db.UniqueConstraint('code', 'title', name='uq_subject_code_title'),)
+
+class StudentSubject(db.Model):
+    __tablename__ = 'student_subject'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subject.id'), nullable=False)
+    __table_args__ = (db.UniqueConstraint('student_id', 'subject_id', name='uq_student_subject'),)
+
+class ExamSlot(db.Model):
+    __tablename__ = 'exam_slot'
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    session = db.Column(db.String(5), nullable=False)  # FN/AN
+    subject_id = db.Column(db.Integer, db.ForeignKey('subject.id'), nullable=False)
+    department = db.Column(db.String(50), nullable=True)
+    year = db.Column(db.String(10), nullable=True)
+    __table_args__ = (db.UniqueConstraint('date', 'session', 'subject_id', name='uq_exam_slot'),)
+
+class HallSeat(db.Model):
+    __tablename__ = 'hall_seat'
+    id = db.Column(db.Integer, primary_key=True)
+    exam_slot_id = db.Column(db.Integer, db.ForeignKey('exam_slot.id'), nullable=False)
+    hall_id = db.Column(db.Integer, db.ForeignKey('hall.id'), nullable=False)
+    seat_no = db.Column(db.Integer, nullable=False)  # 1..60
+    desk_no = db.Column(db.Integer, nullable=False)  # 1..30
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    __table_args__ = (db.UniqueConstraint('exam_slot_id', 'hall_id', 'seat_no', name='uq_slot_hall_seat'),)
+
+class Faculty(db.Model):
+    __tablename__ = 'faculty'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(100), unique=True, nullable=True)
+    phone = db.Column(db.String(15), nullable=True)
+    department = db.Column(db.String(50), nullable=True)
+
+class Invigilation(db.Model):
+    __tablename__ = 'invigilation'
+    id = db.Column(db.Integer, primary_key=True)
+    exam_slot_id = db.Column(db.Integer, db.ForeignKey('exam_slot.id'), nullable=False)
+    hall_id = db.Column(db.Integer, db.ForeignKey('hall.id'), nullable=False)
+    faculty_id = db.Column(db.Integer, db.ForeignKey('faculty.id'), nullable=False)
+    role = db.Column(db.String(20), default='Invigilator')
+    __table_args__ = (db.UniqueConstraint('exam_slot_id', 'hall_id', 'faculty_id', name='uq_invigilation'),)
+
+class BookletIssue(db.Model):
+    __tablename__ = 'booklet_issue'
+    id = db.Column(db.Integer, primary_key=True)
+    exam_slot_id = db.Column(db.Integer, db.ForeignKey('exam_slot.id'), nullable=False)
+    hall_id = db.Column(db.Integer, db.ForeignKey('hall.id'), nullable=False)
+    issued = db.Column(db.Integer, default=0)
+    used = db.Column(db.Integer, default=0)
+    returned = db.Column(db.Integer, default=0)
+    __table_args__ = (db.UniqueConstraint('exam_slot_id', 'hall_id', name='uq_booklet'),)
+
 # Create tables
 with app.app_context():
     db.create_all()
     
-    # Create default admin user if it doesn't exist
+    # Create default admin user if it doesn't exist (SQL store)
     admin = Admin.query.filter_by(username='admin').first()
     if not admin:
         admin = Admin(username='admin')
@@ -295,8 +512,12 @@ def attendance():
 @app.route('/api/students', methods=['GET'])
 def get_students():
     try:
-        students = Student.query.all()
-        return jsonify([student.to_dict() for student in students])
+        if USE_MONGO:
+            docs = list(mongo_db.students.find({}, {'_id': 0}))
+            return jsonify([mongo_student_to_dict(d) for d in docs])
+        else:
+            students = Student.query.all()
+            return jsonify([student.to_dict() for student in students])
     except Exception as e:
         return jsonify({'error': 'Failed to fetch students'}), 500
 
@@ -322,21 +543,36 @@ def create_student():
         if not re.match(phone_pattern, data['phone']):
             return jsonify({'error': 'Phone number must be 10 digits'}), 400
         
-        # Check if student with this email already exists
-        existing_student = Student.query.filter_by(email=data['email']).first()
-        if existing_student:
-            return jsonify({'error': 'Student with this email already exists'}), 400
-        
-        student = Student(
-            name=data['name'],
-            email=data['email'],
-            phone=data['phone'],
-            department=data['department'],
-            year=data['year']
-        )
-        db.session.add(student)
-        db.session.commit()
-        return jsonify(student.to_dict()), 201
+        if USE_MONGO:
+            try:
+                next_id = mongo_next_sequence('students')
+                doc = {
+                    'id': next_id,
+                    'name': data['name'],
+                    'email': data['email'],
+                    'phone': data['phone'],
+                    'department': data['department'],
+                    'year': data['year'],
+                    'created_at': datetime.utcnow()
+                }
+                mongo_db.students.insert_one(doc)
+                return jsonify(mongo_student_to_dict(doc)), 201
+            except DuplicateKeyError:
+                return jsonify({'error': 'Student with this email already exists'}), 400
+        else:
+            existing_student = Student.query.filter_by(email=data['email']).first()
+            if existing_student:
+                return jsonify({'error': 'Student with this email already exists'}), 400
+            student = Student(
+                name=data['name'],
+                email=data['email'],
+                phone=data['phone'],
+                department=data['department'],
+                year=data['year']
+            )
+            db.session.add(student)
+            db.session.commit()
+            return jsonify(student.to_dict()), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': 'Failed to create student'}), 500
@@ -344,15 +580,20 @@ def create_student():
 @app.route('/api/students/<int:id>', methods=['GET'])
 def get_student(id):
     try:
-        student = Student.query.get_or_404(id)
-        return jsonify(student.to_dict())
+        if USE_MONGO:
+            doc = mongo_db.students.find_one({'id': id}, {'_id': 0})
+            if not doc:
+                return jsonify({'error': 'Student not found'}), 404
+            return jsonify(mongo_student_to_dict(doc))
+        else:
+            student = Student.query.get_or_404(id)
+            return jsonify(student.to_dict())
     except Exception as e:
         return jsonify({'error': 'Student not found'}), 404
 
 @app.route('/api/students/<int:id>', methods=['PUT'])
 def update_student(id):
     try:
-        student = Student.query.get_or_404(id)
         data = request.get_json()
         
         # Validate required fields
@@ -372,18 +613,36 @@ def update_student(id):
         if not re.match(phone_pattern, data['phone']):
             return jsonify({'error': 'Phone number must be 10 digits'}), 400
         
-        # Check if another student with this email already exists
-        existing_student = Student.query.filter_by(email=data['email']).first()
-        if existing_student and existing_student.id != id:
-            return jsonify({'error': 'Student with this email already exists'}), 400
-        
-        student.name = data['name']
-        student.email = data['email']
-        student.phone = data['phone']
-        student.department = data['department']
-        student.year = data['year']
-        db.session.commit()
-        return jsonify(student.to_dict())
+        if USE_MONGO:
+            other = mongo_db.students.find_one({'email': data['email'], 'id': {'$ne': id}})
+            if other:
+                return jsonify({'error': 'Student with this email already exists'}), 400
+            res = mongo_db.students.find_one_and_update(
+                {'id': id},
+                {'$set': {
+                    'name': data['name'],
+                    'email': data['email'],
+                    'phone': data['phone'],
+                    'department': data['department'],
+                    'year': data['year']
+                }},
+                return_document=True
+            )
+            if not res:
+                return jsonify({'error': 'Student not found'}), 404
+            return jsonify(mongo_student_to_dict(res))
+        else:
+            student = Student.query.get_or_404(id)
+            existing_student = Student.query.filter_by(email=data['email']).first()
+            if existing_student and existing_student.id != id:
+                return jsonify({'error': 'Student with this email already exists'}), 400
+            student.name = data['name']
+            student.email = data['email']
+            student.phone = data['phone']
+            student.department = data['department']
+            student.year = data['year']
+            db.session.commit()
+            return jsonify(student.to_dict())
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': 'Failed to update student'}), 500
@@ -391,10 +650,16 @@ def update_student(id):
 @app.route('/api/students/<int:id>', methods=['DELETE'])
 def delete_student(id):
     try:
-        student = Student.query.get_or_404(id)
-        db.session.delete(student)
-        db.session.commit()
-        return '', 204
+        if USE_MONGO:
+            res = mongo_db.students.delete_one({'id': id})
+            if res.deleted_count == 0:
+                return jsonify({'error': 'Student not found'}), 404
+            return '', 204
+        else:
+            student = Student.query.get_or_404(id)
+            db.session.delete(student)
+            db.session.commit()
+            return '', 204
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': 'Failed to delete student'}), 500
@@ -928,123 +1193,81 @@ def upload_students():
         file.save(file_path)
         
         try:
-            # Determine file type and read accordingly
-            if filename.endswith('.csv'):
-                df = pd.read_csv(file_path)
-            elif filename.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_path)
-            else:
-                return jsonify({'error': 'Unsupported file format'}), 400
-
-            # Normalize column names for flexible mapping
-            df.columns = [str(c).strip().lower() for c in df.columns]
-
-            # Build normalization that removes non-alphanumeric characters
-            import re
-            def norm_key(s: str) -> str:
-                return re.sub(r'[^a-z0-9]+', '', str(s).strip().lower())
-
-            norm_map = {norm_key(col): col for col in df.columns}
-
-            # Column resolver supporting variants and noisy headers
-            def resolve(*candidates):
-                for cand in candidates:
-                    key = norm_key(cand)
-                    if key in norm_map:
-                        return norm_map[key]
-                return None
-
-            name_col = resolve('name', 'student_name', 'name of the student')
-            email_col = resolve('email')
-            phone_col = resolve('phone', 'mobile', 'mobile_no', 'phone_no')
-            dept_col = resolve('department', 'dept')
-            year_col = resolve('year', 'prog & year', 'prog & year.')
-            reg_col = resolve('reg_no', 'reg no', 'regno')
-
-            # Fallback: some workbooks have header further down. Try autodetect header row.
-            if (not name_col) or (not (email_col or reg_col)):
-                if filename.endswith('.csv'):
-                    raw = pd.read_csv(file_path, header=None)
-                else:
-                    raw = pd.read_excel(file_path, header=None)
-
-                header_idx = None
-                for i in range(min(20, len(raw))):
-                    row_vals = [str(x) for x in raw.iloc[i].tolist()]
-                    row_norms = [norm_key(x) for x in row_vals]
-                    if (any(k in row_norms for k in [norm_key('name of the student'), norm_key('name')]) and 
-                        any(k in row_norms for k in [norm_key('email'), norm_key('reg_no'), norm_key('reg no'), norm_key('regno')])):
-                        header_idx = i
-                        # Build new DataFrame from next row as data
-                        new_cols = [str(x).strip() for x in raw.iloc[i].tolist()]
-                        df = raw.iloc[i+1:].copy()
-                        df.columns = new_cols
-                        # Renormalize maps
-                        df.columns = [str(c).strip().lower() for c in df.columns]
-                        norm_map = {norm_key(col): col for col in df.columns}
-                        name_col = resolve('name', 'student_name', 'name of the student')
-                        email_col = resolve('email')
-                        phone_col = resolve('phone', 'mobile', 'mobile_no', 'phone_no')
-                        dept_col = resolve('department', 'dept')
-                        year_col = resolve('year', 'prog & year', 'prog & year.')
-                        reg_col = resolve('reg_no', 'reg no', 'regno')
-                        break
-
-            if not name_col and not (email_col or reg_col):
-                return jsonify({'error': 'Missing essential columns. Need at least name and email/reg_no'}), 400
+            # Transform to standardized columns
+            std_df = transform_excel(file_path)
 
             saved_count = 0
             errors = []
 
-            for index, row in df.iterrows():
+            for index, row in std_df.iterrows():
                 try:
-                    name_val = str(row[name_col]).strip() if name_col else ''
-                    # Email: prefer email, else synthesize from reg no
-                    email_val = ''
-                    if email_col and pd.notna(row.get(email_col)):
-                        email_val = str(row[email_col]).strip()
+                    id_val = str(row['ID']).strip()
+                    name_val = str(row['Name']).strip()
+                    email_val = str(row['Email']).strip()
+                    phone_val = str(row['Phone']).strip()
+                    dept_val = str(row['Department']).strip()
+                    year_val = str(row['Year']).strip()
+
+                    # If email missing but ID present, derive pseudo email; else if both missing, skip
                     if not email_val:
-                        reg_val = str(row.get(reg_col, '')).strip() if reg_col else ''
-                        if not reg_val:
-                            raise ValueError('Missing email and reg_no')
-                        email_val = f"{reg_val}@example.edu"
+                        if id_val:
+                            email_val = f"{id_val}@example.edu"
+                        else:
+                            raise ValueError('Missing Email and ID')
 
-                    phone_val = '0000000000'
-                    if phone_col and pd.notna(row.get(phone_col)):
-                        phone_val = ''.join(ch for ch in str(row[phone_col]) if ch.isdigit())[:10] or '0000000000'
-
-                    dept_val = str(row.get(dept_col, '')).strip() if dept_col else ''
-                    year_val = str(row.get(year_col, '')).strip() if year_col else ''
+                    # If phone missing, keep empty string (as per requirement)
+                    # Ensure phone has only digits (optional cleanup)
+                    phone_val = ''.join(ch for ch in phone_val if ch.isdigit())[:10] if phone_val else ''
 
                     if not name_val:
-                        raise ValueError('Missing name')
+                        raise ValueError('Missing Name')
 
-                    existing_student = Student.query.filter_by(email=email_val).first()
-                    if existing_student:
-                        existing_student.name = name_val
-                        existing_student.phone = phone_val
-                        existing_student.department = dept_val
-                        existing_student.year = year_val
+                    if USE_MONGO:
+                        # Upsert by email
+                        doc = {
+                            'name': name_val,
+                            'email': email_val,
+                            'phone': phone_val,
+                            'department': dept_val,
+                            'year': year_val
+                        }
+                        existing = mongo_db.students.find_one({'email': email_val})
+                        if existing:
+                            mongo_db.students.update_one({'email': email_val}, {'$set': doc})
+                        else:
+                            doc['id'] = mongo_next_sequence('students')
+                            doc['created_at'] = datetime.utcnow()
+                            mongo_db.students.insert_one(doc)
                     else:
-                        student = Student(
-                            name=name_val,
-                            email=email_val,
-                            phone=phone_val,
-                            department=dept_val,
-                            year=year_val
-                        )
-                        db.session.add(student)
+                        existing_student = Student.query.filter_by(email=email_val).first()
+                        if existing_student:
+                            existing_student.name = name_val
+                            existing_student.phone = phone_val
+                            existing_student.department = dept_val
+                            existing_student.year = year_val
+                        else:
+                            student = Student(
+                                name=name_val,
+                                email=email_val,
+                                phone=phone_val,
+                                department=dept_val,
+                                year=year_val
+                            )
+                            db.session.add(student)
 
                     saved_count += 1
                 except Exception as e:
                     errors.append(f"Row {index + 1}: {str(e)}")
 
-            db.session.commit()
+            if not USE_MONGO:
+                db.session.commit()
 
+            # Clean up uploaded file
             os.remove(file_path)
 
             return jsonify({
-                'processed_rows': int(len(df)),
+                'message': f'Successfully processed {int(saved_count)} students',
+                'processed_rows': int(len(std_df)),
                 'saved_students': int(saved_count),
                 'errors': errors
             }), 200
@@ -1128,6 +1351,393 @@ def upload_staff():
     return jsonify({'error': 'File upload failed'}), 500
 
 
+
+
+@app.route('/api/import/excel', methods=['POST'])
+def import_excel():
+    # Import pipeline for headers: reg_no,name,department,year,subject_code,subject_title,exam_date,session,hall_no?,seat_no?
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'error': 'No file selected'}), 400
+
+    filename = secure_filename(file.filename)
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(file_path)
+
+    try:
+        if filename.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        required = ['reg_no', 'name', 'department', 'year', 'subject_code', 'subject_title', 'exam_date', 'session']
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            return jsonify({'error': f'Missing columns: {", ".join(missing)}'}), 400
+
+        from datetime import datetime as _dt
+
+        created_students = 0
+        created_subjects = 0
+        created_slots = 0
+        created_links = 0
+        created_seats = 0
+
+        # Cache lookups
+        subj_cache = {}
+        student_cache = {}
+
+        for _, row in df.iterrows():
+            reg = str(row['reg_no']).strip()
+            sname = str(row['name']).strip()
+            dept = str(row['department']).strip()
+            year = str(row['year']).strip()
+            scode = str(row['subject_code']).strip()
+            stitle = str(row['subject_title']).strip()
+            date_val = row['exam_date']
+            sess = str(row['session']).strip().upper()
+            hall_no = str(row['hall_no']).strip() if 'hall_no' in df.columns and pd.notna(row['hall_no']) else None
+            seat_no = int(row['seat_no']) if 'seat_no' in df.columns and pd.notna(row['seat_no']) else None
+
+            # Student
+            email = f"{reg}@example.edu"
+            student = student_cache.get(email) or Student.query.filter_by(email=email).first()
+            if not student:
+                student = Student(name=sname, email=email, phone='0000000000', department=dept, year=year)
+                db.session.add(student)
+                db.session.flush()
+                created_students += 1
+                student_cache[email] = student
+
+            # Subject
+            subj_key = (scode, stitle)
+            subject = subj_cache.get(subj_key) or Subject.query.filter_by(code=scode, title=stitle).first()
+            if not subject:
+                subject = Subject(code=scode, title=stitle, department=dept, year=year)
+                db.session.add(subject)
+                db.session.flush()
+                created_subjects += 1
+                subj_cache[subj_key] = subject
+
+            # StudentSubject link
+            link = StudentSubject.query.filter_by(student_id=student.id, subject_id=subject.id).first()
+            if not link:
+                link = StudentSubject(student_id=student.id, subject_id=subject.id)
+                db.session.add(link)
+                created_links += 1
+
+            # ExamSlot
+            try:
+                if isinstance(date_val, str):
+                    ex_date = _dt.strptime(date_val.strip(), '%Y-%m-%d').date() if '-' in date_val else _dt.strptime(date_val.strip(), '%d-%m-%Y').date()
+                else:
+                    ex_date = pd.to_datetime(date_val).date()
+            except Exception:
+                return jsonify({'error': f'Invalid exam_date: {date_val}'}), 400
+
+            slot = ExamSlot.query.filter_by(date=ex_date, session=sess, subject_id=subject.id).first()
+            if not slot:
+                slot = ExamSlot(date=ex_date, session=sess, subject_id=subject.id, department=dept, year=year)
+                db.session.add(slot)
+                db.session.flush()
+                created_slots += 1
+
+            # Optional pre-assigned seating
+            if hall_no and seat_no:
+                hall = Hall.query.filter((Hall.name == hall_no) | (Hall.room_number == hall_no)).first()
+                if hall:
+                    desk_no = ((seat_no - 1) // 2) + 1
+                    if 1 <= seat_no <= 60:
+                        existing = HallSeat.query.filter_by(exam_slot_id=slot.id, hall_id=hall.id, seat_no=seat_no).first()
+                        if not existing:
+                            hs = HallSeat(exam_slot_id=slot.id, hall_id=hall.id, seat_no=seat_no, desk_no=desk_no, student_id=student.id)
+                            db.session.add(hs)
+                            created_seats += 1
+
+        db.session.commit()
+        os.remove(file_path)
+        return jsonify({
+            'created_students': created_students,
+            'created_subjects': created_subjects,
+            'created_exam_slots': created_slots,
+            'created_student_subject_links': created_links,
+            'created_preassigned_seats': created_seats
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Import failed: {str(e)}'}), 500
+    finally:
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception:
+            pass
+
+
+@app.route('/api/allocate', methods=['POST'])
+def allocate_halls():
+    # Body: { date: YYYY-MM-DD, session: FN|AN, hall_ids: [..] }
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json()
+    try:
+        from datetime import datetime as _dt
+        date_str = data.get('date')
+        sess = (data.get('session') or '').upper()
+        hall_ids = data.get('hall_ids') or []
+        if not date_str or not sess or not hall_ids:
+            return jsonify({'error': 'date, session, hall_ids are required'}), 400
+        ex_date = _dt.strptime(date_str, '%Y-%m-%d').date()
+
+        halls = Hall.query.filter(Hall.id.in_(hall_ids)).order_by(Hall.capacity.desc()).all()
+        if not halls:
+            return jsonify({'error': 'No halls found'}), 400
+
+        # For each slot on date/session, gather students needing seats
+        slots = ExamSlot.query.filter_by(date=ex_date, session=sess).all()
+        result = []
+        for slot in slots:
+            # Find students registered to this subject
+            students = (db.session.query(Student)
+                        .join(StudentSubject, Student.id == StudentSubject.student_id)
+                        .filter(StudentSubject.subject_id == slot.subject_id)
+                        .all())
+
+            # Exclude already seated
+            seated_ids = set(s.student_id for s in HallSeat.query.filter_by(exam_slot_id=slot.id).all())
+            queue = [s for s in students if s.id not in seated_ids]
+
+            # Anti-malpractice: interleave by (department, year)
+            from collections import defaultdict, deque
+            groups = defaultdict(list)
+            for s in queue:
+                groups[(s.department, s.year)].append(s)
+            # Sort groups by size desc and make deques
+            group_deques = [deque(v) for k,v in sorted(groups.items(), key=lambda kv: -len(kv[1]))]
+
+            def next_student(idx=[0]):
+                # round-robin across groups
+                for _ in range(len(group_deques)):
+                    g = group_deques[idx[0] % len(group_deques)]
+                    idx[0] += 1
+                    if g:
+                        return g.popleft()
+                return None
+
+            # Allocate across halls
+            allocations = []
+            for hall in halls:
+                capacity = min(hall.capacity or 60, 60)  # cap at 60 per requirement
+                seats = []
+                for seat_no in range(1, capacity + 1):
+                    student = next_student()
+                    if not student:
+                        break
+                    desk_no = ((seat_no - 1) // 2) + 1
+                    seats.append((seat_no, desk_no, student))
+                # Persist
+                for seat_no, desk_no, student in seats:
+                    hs = HallSeat(exam_slot_id=slot.id, hall_id=hall.id, seat_no=seat_no, desk_no=desk_no, student_id=student.id)
+                    db.session.add(hs)
+                allocations.append({'hall_id': hall.id, 'allocated': len(seats)})
+
+            result.append({'exam_slot_id': slot.id, 'subject_id': slot.subject_id, 'allocations': allocations})
+
+        db.session.commit()
+        return jsonify({'message': 'Allocation completed', 'slots': result})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Allocation failed: {str(e)}'}), 500
+
+
+@app.route('/hall_ticket_pdf/<int:student_id>')
+def hall_ticket_pdf(student_id: int):
+    if 'admin_id' not in session:
+        return redirect(url_for('login'))
+    date_str = request.args.get('date')
+    sess = (request.args.get('session') or '').upper()
+    if not date_str or not sess:
+        return render_template('hall_ticket_error.html', message='date and session are required')
+    from datetime import datetime as _dt
+    try:
+        ex_date = _dt.strptime(date_str, '%Y-%m-%d').date()
+    except Exception:
+        return render_template('hall_ticket_error.html', message='Invalid date format')
+
+    student = Student.query.get_or_404(student_id)
+    # Find all seats for this student at date/session
+    records = (db.session.query(HallSeat, ExamSlot, Hall, Subject)
+               .join(ExamSlot, HallSeat.exam_slot_id == ExamSlot.id)
+               .join(Hall, HallSeat.hall_id == Hall.id)
+               .join(Subject, ExamSlot.subject_id == Subject.id)
+               .filter(HallSeat.student_id == student_id, ExamSlot.date == ex_date, ExamSlot.session == sess)
+               .all())
+
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    W, H = A4
+
+    # Header
+    c.setFont('Helvetica-Bold', 14)
+    c.drawString(20*mm, (H-20*mm), 'HALL TICKET')
+    c.setFont('Helvetica', 10)
+    c.drawString(20*mm, (H-26*mm), f"Name: {student.name}")
+    reg = student.email.split('@')[0] if student.email else ''
+    c.drawString(20*mm, (H-32*mm), f"Reg No: {reg}")
+    c.drawString(20*mm, (H-38*mm), f"Department: {student.department}  Year: {student.year}")
+    c.drawString(20*mm, (H-44*mm), f"Date: {ex_date.isoformat()}  Session: {sess}")
+
+    # QR code
+    qr = qrcode.make(f"{reg}|{ex_date}|{sess}")
+    qr_buf = BytesIO()
+    qr.save(qr_buf, format='PNG')
+    qr_buf.seek(0)
+    c.drawImage(qr_buf, (W-40*mm), (H-50*mm), 20*mm, 20*mm, preserveAspectRatio=True, mask='auto')
+
+    y = H - 60*mm
+    c.setFont('Helvetica-Bold', 10)
+    c.drawString(20*mm, y, 'Paper Code')
+    c.drawString(60*mm, y, 'Title')
+    c.drawString(150*mm, y, 'Hall/Seat')
+    y -= 6*mm
+    c.setFont('Helvetica', 10)
+    for hs, slot, hall, subj in records:
+        c.drawString(20*mm, y, subj.code)
+        c.drawString(60*mm, y, (subj.title[:50] + ('...' if len(subj.title) > 50 else '')))
+        c.drawString(150*mm, y, f"{hall.name} / {hs.seat_no}")
+        y -= 6*mm
+        if y < 20*mm:
+            c.showPage(); y = H - 20*mm
+
+    c.showPage()
+    c.save()
+    pdf = buf.getvalue()
+    buf.close()
+    return Response(pdf, mimetype='application/pdf', headers={'Content-Disposition': 'inline; filename=hall_ticket.pdf'})
+
+
+@app.route('/attendance_sheet_pdf')
+def attendance_sheet_pdf():
+    if 'admin_id' not in session:
+        return redirect(url_for('login'))
+    date_str = request.args.get('date')
+    sess = (request.args.get('session') or '').upper()
+    hall_id = request.args.get('hall_id', type=int)
+    if not date_str or not sess or not hall_id:
+        return render_template('hall_ticket_error.html', message='date, session, hall_id are required')
+    from datetime import datetime as _dt
+    ex_date = _dt.strptime(date_str, '%Y-%m-%d').date()
+
+    hall = Hall.query.get_or_404(hall_id)
+    records = (db.session.query(HallSeat, ExamSlot, Student, Subject)
+               .join(ExamSlot, HallSeat.exam_slot_id == ExamSlot.id)
+               .join(Student, HallSeat.student_id == Student.id)
+               .join(Subject, ExamSlot.subject_id == Subject.id)
+               .filter(ExamSlot.date == ex_date, ExamSlot.session == sess, HallSeat.hall_id == hall_id)
+               .order_by(HallSeat.seat_no.asc())
+               .all())
+
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    W, H = A4
+    c.setFont('Helvetica-Bold', 12)
+    c.drawString(20*mm, (H-20*mm), f"Attendance Sheet - {hall.name}  {ex_date} {sess}")
+    y = H - 30*mm
+    c.setFont('Helvetica-Bold', 10)
+    c.drawString(20*mm, y, 'Seat')
+    c.drawString(35*mm, y, 'Reg No')
+    c.drawString(70*mm, y, 'Name')
+    c.drawString(150*mm, y, 'Sign')
+    y -= 6*mm
+    c.setFont('Helvetica', 10)
+    for hs, slot, stu, subj in records:
+        reg = stu.email.split('@')[0] if stu.email else ''
+        c.drawString(20*mm, y, str(hs.seat_no))
+        c.drawString(35*mm, y, reg)
+        c.drawString(70*mm, y, (stu.name[:40] + ('...' if len(stu.name) > 40 else '')))
+        c.line(150*mm, y-1*mm, (W-20*mm), y-1*mm)
+        y -= 7*mm
+        if y < 20*mm:
+            c.showPage(); y = H - 20*mm
+    c.showPage(); c.save()
+    pdf = buf.getvalue(); buf.close()
+    return Response(pdf, mimetype='application/pdf', headers={'Content-Disposition': 'inline; filename=attendance.pdf'})
+
+
+@app.route('/api/export/halltickets_zip', methods=['GET'])
+def export_halltickets_zip():
+    # Params: date=YYYY-MM-DD, session=FN|AN, optional subject_code, hall_id
+    if 'admin_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    date_str = request.args.get('date')
+    sess = (request.args.get('session') or '').upper()
+    subject_code = request.args.get('subject_code')
+    hall_id = request.args.get('hall_id', type=int)
+    if not date_str or not sess:
+        return jsonify({'error': 'date and session required'}), 400
+    from datetime import datetime as _dt
+    try:
+        ex_date = _dt.strptime(date_str, '%Y-%m-%d').date()
+    except Exception:
+        return jsonify({'error': 'Invalid date'}), 400
+
+    # Build query of (student, hallseat, hall, subject) at date/session
+    q = (db.session.query(Student, HallSeat, Hall, Subject)
+         .join(HallSeat, HallSeat.student_id == Student.id)
+         .join(ExamSlot, HallSeat.exam_slot_id == ExamSlot.id)
+         .join(Hall, HallSeat.hall_id == Hall.id)
+         .join(Subject, ExamSlot.subject_id == Subject.id)
+         .filter(ExamSlot.date == ex_date, ExamSlot.session == sess))
+    if subject_code:
+        q = q.filter(Subject.code == subject_code)
+    if hall_id:
+        q = q.filter(Hall.id == hall_id)
+
+    records = q.all()
+    if not records:
+        return jsonify({'error': 'No tickets found'}), 404
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
+    with zipfile.ZipFile(tmp.name, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for student, hs, hall, subj in records:
+            reg = student.email.split('@')[0] if student.email else str(student.id)
+            # Generate single-page PDF ticket buffer
+            buf = BytesIO(); c = canvas.Canvas(buf, pagesize=A4); W,H = A4
+            c.setFont('Helvetica-Bold', 14)
+            c.drawString(20*mm, (H-20*mm), 'HALL TICKET')
+            c.setFont('Helvetica', 10)
+            c.drawString(20*mm, (H-26*mm), f"Name: {student.name}")
+            c.drawString(20*mm, (H-32*mm), f"Reg No: {reg}")
+            c.drawString(20*mm, (H-38*mm), f"Department: {student.department}  Year: {student.year}")
+            c.drawString(20*mm, (H-44*mm), f"Date: {ex_date.isoformat()}  Session: {sess}")
+            # QR
+            qr = qrcode.make(f"{reg}|{ex_date}|{sess}|{subj.code}")
+            qb = BytesIO(); qr.save(qb, format='PNG'); qb.seek(0)
+            c.drawImage(qb, (W-40*mm), (H-50*mm), 20*mm, 20*mm, preserveAspectRatio=True, mask='auto')
+            # Row
+            y = H - 60*mm; c.setFont('Helvetica-Bold', 10)
+            c.drawString(20*mm, y, 'Paper Code'); c.drawString(60*mm, y, 'Title'); c.drawString(150*mm, y, 'Hall/Seat')
+            y -= 6*mm; c.setFont('Helvetica', 10)
+            c.drawString(20*mm, y, subj.code)
+            title = (subj.title[:50] + ('...' if len(subj.title) > 50 else ''))
+            c.drawString(60*mm, y, title)
+            c.drawString(150*mm, y, f"{hall.name} / {hs.seat_no}")
+            c.showPage(); c.save(); pdf = buf.getvalue(); buf.close()
+            fname = f"{reg}_{ex_date.isoformat()}_{sess}.pdf"
+            zf.writestr(fname, pdf)
+
+    with open(tmp.name, 'rb') as f:
+        zip_bytes = f.read()
+    os.unlink(tmp.name)
+    zip_name = f"halltickets_{ex_date.isoformat()}_{sess}.zip"
+    return Response(zip_bytes, mimetype='application/zip', headers={'Content-Disposition': f'attachment; filename={zip_name}'})
 
 
 # New: Bulk timetable/allocation upload (Excel/CSV)
@@ -1604,7 +2214,34 @@ def complete_exam(id):
         db.session.rollback()
         return jsonify({'error': f'Failed to complete exam: {str(e)}'}), 500
 
+@app.route('/api/health', methods=['GET'])
+def health():
+    """Health probe to check datastore connectivity."""
+    info = {
+        'use_mongo': USE_MONGO,
+        'students_source': 'mongo' if USE_MONGO else 'sqlalchemy',
+    }
 
-        
+    # Check Mongo connectivity (only if enabled)
+    mongo_connected = False
+    if USE_MONGO and mongo_db is not None:
+        try:
+            mongo_db.command('ping')
+            mongo_connected = True
+        except Exception:
+            mongo_connected = False
+    info['mongo_connected'] = mongo_connected
+
+    # Check SQL connectivity via a lightweight query
+    sql_connected = False
+    try:
+        _ = Admin.query.first()
+        sql_connected = True
+    except Exception:
+        sql_connected = False
+    info['sql_connected'] = sql_connected
+
+    return jsonify(info), 200
+
 if __name__ == '__main__':
     app.run(debug=True)

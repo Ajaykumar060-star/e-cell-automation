@@ -1,0 +1,9 @@
+@echo off
+echo Starting Exam Management System...
+echo.
+echo Installing dependencies...
+pip install -r requirements.txt
+echo.
+echo Starting Flask application...
+python app.py
+pause

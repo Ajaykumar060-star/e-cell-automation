@@ -9,7 +9,8 @@ def main() -> None:
     load_dotenv(Path(__file__).resolve().parent / '.env')
     load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
-    project_root = Path(__file__).resolve().parent.parent
+    # ✅ FIX: Look for database_schema.sql in the current project folder
+    project_root = Path(__file__).resolve().parent
     schema_path = project_root / 'database_schema.sql'
 
     if not schema_path.exists():
@@ -45,5 +46,3 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
-
-

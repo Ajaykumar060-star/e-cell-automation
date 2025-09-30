@@ -84,18 +84,29 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Upload Students Data</h5>
+                <h5 class="modal-title">Upload Data</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="uploadForm">
+                    <div class="mb-3">
+                        <label class="form-label" for="uploadType">Upload Type</label>
+                        <select class="form-select" id="uploadType">
+                            <option value="students" selected>Students master</option>
+                            <option value="timetable">Timetable / Seating</option>
+                        </select>
+                        <div class="form-text">
+                            Choose Timetable for sheets with columns like Reg_No, Name of the Student, Dept, Year, SUB_CODE, SUB_TITLE, DATE, SESS, [hall_no], [seat_no]
+                        </div>
+                    </div>
                     <div class="mb-3">
                         <label for="uploadFile" class="form-label">Select CSV or Excel file</label>
                         <input type="file" class="form-control" id="uploadFile" accept=".csv, .xlsx, .xls" required>
                         <div class="form-text">Supported formats: CSV, Excel (.xlsx, .xls)</div>
                     </div>
                     <div class="alert alert-info">
-                        <strong>File Format:</strong> The file should contain columns: name, email, phone, department, year
+                        <strong>Students format:</strong> name, email, phone, department, year<br>
+                        <strong>Timetable format:</strong> Reg_No, Name of the Student, Dept, Year, SUB_CODE, SUB_TITLE, DATE, SESS, [hall_no], [seat_no]
                     </div>
                 </form>
             </div>
@@ -377,6 +388,8 @@ function deleteStudent(id) {
 
 function showUploadModal(type) {
     document.getElementById('uploadForm').reset();
+    const ut = document.getElementById('uploadType');
+    if (ut) ut.value = type || 'students';
     const modal = new bootstrap.Modal(document.getElementById('uploadModal'));
     modal.show();
 }
@@ -392,8 +405,9 @@ function uploadFile(type) {
     
     const formData = new FormData();
     formData.append('file', file);
-    
-    fetch(`/api/upload/${type}`, {
+    const chosenType = (document.getElementById('uploadType') && document.getElementById('uploadType').value) || type || 'students';
+
+    fetch(`/api/upload/${chosenType}`, {
         method: 'POST',
         body: formData
     })
@@ -402,9 +416,11 @@ function uploadFile(type) {
         if (data.error) {
             showNotification(data.error, 'danger');
         } else {
-            showNotification(data.message, 'success');
+            showNotification(data.message || 'Upload successful', 'success');
             bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
-            loadStudents();
+            if (chosenType === 'students') {
+                loadStudents();
+            }
         }
     })
     .catch(error => {
@@ -412,5 +428,3 @@ function uploadFile(type) {
         showNotification('Error uploading file', 'danger');
     });
 }
-</script>
-{% endblock %}
