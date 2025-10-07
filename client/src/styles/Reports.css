@@ -1,0 +1,116 @@
+/* Reports styles */
+.reports-card {
+  background: white;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+}
+
+.reports-card .card-header {
+  background: linear-gradient(135deg, #fd7e14, #e8680a);
+  color: white;
+  border-radius: 15px 15px 0 0 !important;
+  padding: 1.5rem;
+}
+
+.reports-card .card-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.reports-card .card-title i {
+  margin-right: 0.5rem;
+}
+
+.reports-card .card-body {
+  padding: 2rem;
+}
+
+/* Report cards styling */
+.report-card {
+  border: none;
+  border-radius: 12px;
+  transition: transform 0.3s, box-shadow 0.3s;
+  height: 100%;
+}
+
+.report-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.report-card .card-header {
+  border-radius: 12px 12px 0 0 !important;
+  padding: 1.25rem;
+}
+
+.report-card .card-body {
+  padding: 1.5rem;
+}
+
+.report-card h5 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.report-card h3 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.report-card p {
+  color: #6c757d;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* Department tables */
+.table-sm th,
+.table-sm td {
+  padding: 0.5rem;
+}
+
+.table-sm th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #495057;
+  border-top: none;
+}
+
+.table-sm tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Color scheme for different report types */
+.bg-primary {
+  background: linear-gradient(135deg, #007bff, #0056b3) !important;
+}
+
+.bg-success {
+  background: linear-gradient(135deg, #28a745, #20c997) !important;
+}
+
+.bg-warning {
+  background: linear-gradient(135deg, #ffc107, #fd7e14) !important;
+}
+
+.bg-info {
+  background: linear-gradient(135deg, #17a2b8, #138496) !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .reports-card .card-body {
+    padding: 1.5rem;
+  }
+
+  .report-card .card-body {
+    padding: 1rem;
+  }
+
+  .report-card h3 {
+    font-size: 1.5rem;
+  }
+}

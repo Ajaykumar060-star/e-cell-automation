@@ -522,12 +522,7 @@ def students():
         for k, v in sorted(subjects_map.items(), key=lambda x: (x[0][2], x[0][3], x[0][0], x[0][1]))
     ]
 
-    # Calculate total students count
-    total_uploaded = len(rows) if rows else 0
-    total_db = len(Student.query.all()) if not USE_MONGO else len(list(mongo_db.students.find()))
-    total_students = total_uploaded + total_db
-
-    return render_template('students.html', columns=columns, rows=rows, subjects=subjects, total_students=total_students)
+    return render_template('students.html', columns=columns, rows=rows, subjects=subjects)
 
 @app.route('/staff')
 def staff():

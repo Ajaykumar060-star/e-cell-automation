@@ -1,294 +1,382 @@
-{% extends "base.html" %}
-
-{% block title %}Students - Exam Management System{% endblock %}
-{% block page_title %}Students Management{% endblock %}
-
-{% block content %}
+{% extends "base.html" %} {% block title %}Students - Exam Management System{%
+endblock %} {% block page_title %}Students Management{% endblock %} {% block
+content %}
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-md-12">
-            <!-- Total Students Count Card -->
-            <div class="card mb-3 bg-light">
-                <div class="card-body text-center">
-                    <h4 class="card-title text-primary">Total Students</h4>
-                    <h2 class="card-text text-success">{{ total_students }}</h2>
-                    <small class="text-muted">Combined from uploaded data and database</small>
-                </div>
-            </div>
-            {% if rows %}
-            <div class="card mb-3">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Uploaded Excel Data</h5>
-                    <div>
-                        <a class="btn btn-outline-secondary me-2" href="{{ url_for('index') }}">Back to Home</a>
-                        <a class="btn btn-primary" href="{{ url_for('hall_tickets') }}">Go to Seat Allocation</a>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <input id="studentsSearch" type="text" class="form-control" placeholder="Search by Name / Reg_No / Dept / SUB_CODE" oninput="filterUploadedStudents()">
-                        </div>
-                    </div>
-                    <div class="table-responsive" style="max-height:70vh;">
-                        <table id="uploadedStudentsTable" class="table table-striped table-bordered table-hover mb-0">
-                            <thead class="table-light" style="position:sticky; top:0; z-index:1;">
-                                <tr>
-                                    {% for col in columns %}
-                                        <th>{{ col }}</th>
-                                    {% endfor %}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for r in rows %}
-                                    <tr>
-                                        {% for col in columns %}
-                                            <td>{{ r[col] }}</td>
-                                        {% endfor %}
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">Subjects Summary (by SUB_CODE / SUB_TITLE / DATE / SESS)</h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive" style="max-height:50vh;">
-                        <table class="table table-striped table-bordered table-hover mb-0">
-                            <thead class="table-light" style="position:sticky; top:0; z-index:1;">
-                                <tr>
-                                    <th>SUB_CODE</th>
-                                    <th>SUB_TITLE</th>
-                                    <th>DATE</th>
-                                    <th>SESS</th>
-                                    <th>TOTAL</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for s in subjects %}
-                                    <tr>
-                                        <td>{{ s.SUB_CODE }}</td>
-                                        <td>{{ s.SUB_TITLE }}</td>
-                                        <td>{{ s.DATE }}</td>
-                                        <td>{{ s.SESS }}</td>
-                                        <td>{{ s.TOTAL }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0">Students List</h5>
-                    <div>
-                        <button class="btn btn-success me-2" onclick="showUploadModal('students')">
-                            <i class="bi bi-upload me-1"></i>Upload CSV/Excel
-                        </button>
-                        <button class="btn btn-primary" onclick="showAddStudentModal()">
-                            <i class="bi bi-plus-circle me-1"></i>Add Student
-                        </button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <!-- Search and Filter Section -->
-                    <div class="row mb-3">
-                        <div class="col-md-3 mb-2">
-                            <input type="text" class="form-control" id="searchStudentName" placeholder="Search by name">
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <input type="text" class="form-control" id="searchStudentEmail" placeholder="Search by email">
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <select class="form-select" id="filterStudentDepartment">
-                                <option value="">All Departments</option>
-                                <!-- Departments will be populated dynamically -->
-                            </select>
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <select class="form-select" id="filterStudentYear">
-                                <option value="">All Years</option>
-                                <option value="1st">1st Year</option>
-                                <option value="2nd">2nd Year</option>
-                                <option value="3rd">3rd Year</option>
-                                <option value="4th">4th Year</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-md-12">
-                            <button class="btn btn-outline-primary" onclick="applyStudentFilters()">
-                                <i class="bi bi-funnel me-1"></i>Apply Filters
-                            </button>
-                            <button class="btn btn-outline-secondary" onclick="resetStudentFilters()">
-                                <i class="bi bi-arrow-clockwise me-1"></i>Reset
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Name</th>
-                                    <th>Email</th>
-                                    <th>Phone</th>
-                                    <th>Department</th>
-                                    <th>Year</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="studentsTableBody">
-                                <!-- Students will be loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+  <div class="row">
+    <div class="col-md-12">
+      {% if rows %}
+      <div class="card mb-3">
+        <div
+          class="card-header d-flex justify-content-between align-items-center"
+        >
+          <h5 class="mb-0">Uploaded Excel Data</h5>
+          <div>
+            <a
+              class="btn btn-outline-secondary me-2"
+              href="{{ url_for('index') }}"
+              >Back to Home</a
+            >
+            <a class="btn btn-primary" href="{{ url_for('hall_tickets') }}"
+              >Go to Seat Allocation</a
+            >
+          </div>
         </div>
+        <div class="card-body">
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <input
+                id="studentsSearch"
+                type="text"
+                class="form-control"
+                placeholder="Search by Name / Reg_No / Dept / SUB_CODE"
+                oninput="filterUploadedStudents()"
+              />
+            </div>
+          </div>
+          <div class="table-responsive" style="max-height: 70vh">
+            <table
+              id="uploadedStudentsTable"
+              class="table table-striped table-bordered table-hover mb-0"
+            >
+              <thead
+                class="table-light"
+                style="position: sticky; top: 0; z-index: 1"
+              >
+                <tr>
+                  {% for col in columns %}
+                  <th>{{ col }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in rows %}
+                <tr>
+                  {% for col in columns %}
+                  <td>{{ r[col] }}</td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">
+            Subjects Summary (by SUB_CODE / SUB_TITLE / DATE / SESS)
+          </h5>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive" style="max-height: 50vh">
+            <table class="table table-striped table-bordered table-hover mb-0">
+              <thead
+                class="table-light"
+                style="position: sticky; top: 0; z-index: 1"
+              >
+                <tr>
+                  <th>SUB_CODE</th>
+                  <th>SUB_TITLE</th>
+                  <th>DATE</th>
+                  <th>SESS</th>
+                  <th>TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for s in subjects %}
+                <tr>
+                  <td>{{ s.SUB_CODE }}</td>
+                  <td>{{ s.SUB_TITLE }}</td>
+                  <td>{{ s.DATE }}</td>
+                  <td>{{ s.SESS }}</td>
+                  <td>{{ s.TOTAL }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="card">
+        <div
+          class="card-header d-flex justify-content-between align-items-center"
+        >
+          <h5 class="card-title mb-0">Students List</h5>
+          <div>
+            <button
+              class="btn btn-success me-2"
+              onclick="showUploadModal('students')"
+            >
+              <i class="bi bi-upload me-1"></i>Upload CSV/Excel
+            </button>
+            <button class="btn btn-primary" onclick="showAddStudentModal()">
+              <i class="bi bi-plus-circle me-1"></i>Add Student
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- Search and Filter Section -->
+          <div class="row mb-3">
+            <div class="col-md-3 mb-2">
+              <input
+                type="text"
+                class="form-control"
+                id="searchStudentName"
+                placeholder="Search by name"
+              />
+            </div>
+            <div class="col-md-3 mb-2">
+              <input
+                type="text"
+                class="form-control"
+                id="searchStudentEmail"
+                placeholder="Search by email"
+              />
+            </div>
+            <div class="col-md-3 mb-2">
+              <select class="form-select" id="filterStudentDepartment">
+                <option value="">All Departments</option>
+                <!-- Departments will be populated dynamically -->
+              </select>
+            </div>
+            <div class="col-md-3 mb-2">
+              <select class="form-select" id="filterStudentYear">
+                <option value="">All Years</option>
+                <option value="1st">1st Year</option>
+                <option value="2nd">2nd Year</option>
+                <option value="3rd">3rd Year</option>
+                <option value="4th">4th Year</option>
+              </select>
+            </div>
+          </div>
+          <div class="row mb-3">
+            <div class="col-md-12">
+              <button
+                class="btn btn-outline-primary"
+                onclick="applyStudentFilters()"
+              >
+                <i class="bi bi-funnel me-1"></i>Apply Filters
+              </button>
+              <button
+                class="btn btn-outline-secondary"
+                onclick="resetStudentFilters()"
+              >
+                <i class="bi bi-arrow-clockwise me-1"></i>Reset
+              </button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-striped table-hover">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Department</th>
+                  <th>Year</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="studentsTableBody">
+                <!-- Students will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
 </div>
 
 <!-- Upload Modal -->
 <div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Upload Data</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Upload Data</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <form id="uploadForm">
+          <div class="mb-3">
+            <label class="form-label" for="uploadType">Upload Type</label>
+            <select class="form-select" id="uploadType">
+              <option value="students" selected>Students master</option>
+              <option value="timetable">Timetable / Seating</option>
+            </select>
+            <div class="form-text">
+              Choose Timetable for sheets with columns like Reg_No, Name of the
+              Student, Dept, Year, SUB_CODE, SUB_TITLE, DATE, SESS, [hall_no],
+              [seat_no]
             </div>
-            <div class="modal-body">
-                <form id="uploadForm">
-                    <div class="mb-3">
-                        <label class="form-label" for="uploadType">Upload Type</label>
-                        <select class="form-select" id="uploadType">
-                            <option value="students" selected>Students master</option>
-                            <option value="timetable">Timetable / Seating</option>
-                        </select>
-                        <div class="form-text">
-                            Choose Timetable for sheets with columns like Reg_No, Name of the Student, Dept, Year, SUB_CODE, SUB_TITLE, DATE, SESS, [hall_no], [seat_no]
-                        </div>
-                    </div>
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="useV2Upload">
-                        <label class="form-check-label" for="useV2Upload">
-                            Use v2 (Mongo engine) for Timetable upload
-                        </label>
-                        <div class="form-text">When checked and Upload Type is Timetable, the file will be sent to /api/v2/upload/timetable</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="uploadFile" class="form-label">Select CSV or Excel file</label>
-                        <input type="file" class="form-control" id="uploadFile" accept=".csv, .xlsx, .xls" required>
-                        <div class="form-text">Supported formats: CSV, Excel (.xlsx, .xls)</div>
-                    </div>
-                    <div class="alert alert-info">
-                        <strong>Students format:</strong> name, email, phone, department, year<br>
-                        <strong>Timetable format:</strong> Reg_No, Name of the Student, Dept, Year, SUB_CODE, SUB_TITLE, DATE, SESS, [hall_no], [seat_no]
-                    </div>
-                </form>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="useV2Upload" />
+            <label class="form-check-label" for="useV2Upload">
+              Use v2 (Mongo engine) for Timetable upload
+            </label>
+            <div class="form-text">
+              When checked and Upload Type is Timetable, the file will be sent
+              to /api/v2/upload/timetable
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success" onclick="uploadFile('students')">Upload</button>
+          </div>
+          <div class="mb-3">
+            <label for="uploadFile" class="form-label"
+              >Select CSV or Excel file</label
+            >
+            <input
+              type="file"
+              class="form-control"
+              id="uploadFile"
+              accept=".csv, .xlsx, .xls"
+              required
+            />
+            <div class="form-text">
+              Supported formats: CSV, Excel (.xlsx, .xls)
             </div>
-        </div>
+          </div>
+          <div class="alert alert-info">
+            <strong>Students format:</strong> name, email, phone, department,
+            year<br />
+            <strong>Timetable format:</strong> Reg_No, Name of the Student,
+            Dept, Year, SUB_CODE, SUB_TITLE, DATE, SESS, [hall_no], [seat_no]
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn btn-success"
+          onclick="uploadFile('students')"
+        >
+          Upload
+        </button>
+      </div>
     </div>
+  </div>
 </div>
 
 <!-- Add/Edit Student Modal -->
 <div class="modal fade" id="studentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="studentModalLabel">Add Student</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="studentForm">
-                    <input type="hidden" id="studentId">
-                    <div class="mb-3">
-                        <label for="studentName" class="form-label">Name</label>
-                        <input type="text" class="form-control" id="studentName" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="studentEmail" class="form-label">Email</label>
-                        <input type="email" class="form-control" id="studentEmail" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="studentPhone" class="form-label">Phone</label>
-                        <input type="text" class="form-control" id="studentPhone" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="studentDepartment" class="form-label">Department</label>
-                        <input type="text" class="form-control" id="studentDepartment" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="studentYear" class="form-label">Year</label>
-                        <select class="form-select" id="studentYear" required>
-                            <option value="">Select Year</option>
-                            <option value="1st">1st Year</option>
-                            <option value="2nd">2nd Year</option>
-                            <option value="3rd">3rd Year</option>
-                            <option value="4th">4th Year</option>
-                        </select>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="saveStudent()">Save</button>
-            </div>
-        </div>
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="studentModalLabel">Add Student</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <form id="studentForm">
+          <input type="hidden" id="studentId" />
+          <div class="mb-3">
+            <label for="studentName" class="form-label">Name</label>
+            <input type="text" class="form-control" id="studentName" required />
+          </div>
+          <div class="mb-3">
+            <label for="studentEmail" class="form-label">Email</label>
+            <input
+              type="email"
+              class="form-control"
+              id="studentEmail"
+              required
+            />
+          </div>
+          <div class="mb-3">
+            <label for="studentPhone" class="form-label">Phone</label>
+            <input
+              type="text"
+              class="form-control"
+              id="studentPhone"
+              required
+            />
+          </div>
+          <div class="mb-3">
+            <label for="studentDepartment" class="form-label">Department</label>
+            <input
+              type="text"
+              class="form-control"
+              id="studentDepartment"
+              required
+            />
+          </div>
+          <div class="mb-3">
+            <label for="studentYear" class="form-label">Year</label>
+            <select class="form-select" id="studentYear" required>
+              <option value="">Select Year</option>
+              <option value="1st">1st Year</option>
+              <option value="2nd">2nd Year</option>
+              <option value="3rd">3rd Year</option>
+              <option value="4th">4th Year</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <button type="button" class="btn btn-primary" onclick="saveStudent()">
+          Save
+        </button>
+      </div>
     </div>
+  </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script>
-// Load students when page loads
-document.addEventListener('DOMContentLoaded', function() {
+  // Load students when page loads
+  document.addEventListener("DOMContentLoaded", function () {
     loadStudentsData();
     loadStudentDepartments();
-});
+  });
 
-let allStudents = []; // Store all students for filtering
+  let allStudents = []; // Store all students for filtering
 
-function loadStudentsData() {
-    fetch('/api/students')
-        .then(response => response.json())
-        .then(students => {
-            allStudents = students; // Store for filtering
-            displayStudents(students);
-            populateDepartmentFilter(students);
-        })
-        .catch(error => {
-            console.error('Error loading students:', error);
-            showNotification('Error loading students', 'danger');
-        });
-}
+  function loadStudentsData() {
+    fetch("/api/students")
+      .then((response) => response.json())
+      .then((students) => {
+        allStudents = students; // Store for filtering
+        displayStudents(students);
+        populateDepartmentFilter(students);
+      })
+      .catch((error) => {
+        console.error("Error loading students:", error);
+        showNotification("Error loading students", "danger");
+      });
+  }
 
-function displayStudents(students) {
-    const tbody = document.getElementById('studentsTableBody');
-    tbody.innerHTML = '';
-    
+  function displayStudents(students) {
+    const tbody = document.getElementById("studentsTableBody");
+    tbody.innerHTML = "";
+
     if (students.length === 0) {
-        const row = document.createElement('tr');
-        row.innerHTML = '<td colspan="7" class="text-center">No students found</td>';
-        tbody.appendChild(row);
-        return;
+      const row = document.createElement("tr");
+      row.innerHTML =
+        '<td colspan="7" class="text-center">No students found</td>';
+      tbody.appendChild(row);
+      return;
     }
-    
-    students.forEach(student => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
+
+    students.forEach((student) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
             <td>${student.id}</td>
             <td>${student.name}</td>
             <td>${student.email}</td>
@@ -304,239 +392,270 @@ function displayStudents(students) {
                 </button>
             </td>
         `;
-        tbody.appendChild(row);
+      tbody.appendChild(row);
     });
-}
+  }
 
-function loadStudentDepartments() {
-    fetch('/api/students')
-        .then(response => response.json())
-        .then(students => {
-            populateDepartmentFilter(students);
-        })
-        .catch(error => {
-            console.error('Error loading student departments:', error);
-        });
-}
+  function loadStudentDepartments() {
+    fetch("/api/students")
+      .then((response) => response.json())
+      .then((students) => {
+        populateDepartmentFilter(students);
+      })
+      .catch((error) => {
+        console.error("Error loading student departments:", error);
+      });
+  }
 
-function populateDepartmentFilter(students) {
-    const departments = [...new Set(students.map(student => student.department))];
-    const select = document.getElementById('filterStudentDepartment');
-    
+  function populateDepartmentFilter(students) {
+    const departments = [
+      ...new Set(students.map((student) => student.department)),
+    ];
+    const select = document.getElementById("filterStudentDepartment");
+
     // Clear existing options except the first one
     select.innerHTML = '<option value="">All Departments</option>';
-    
-    departments.forEach(dept => {
-        const option = document.createElement('option');
-        option.value = dept;
-        option.textContent = dept;
-        select.appendChild(option);
-    });
-}
 
-function applyStudentFilters() {
-    const nameFilter = document.getElementById('searchStudentName').value.toLowerCase();
-    const emailFilter = document.getElementById('searchStudentEmail').value.toLowerCase();
-    const departmentFilter = document.getElementById('filterStudentDepartment').value;
-    const yearFilter = document.getElementById('filterStudentYear').value;
-    
+    departments.forEach((dept) => {
+      const option = document.createElement("option");
+      option.value = dept;
+      option.textContent = dept;
+      select.appendChild(option);
+    });
+  }
+
+  function applyStudentFilters() {
+    const nameFilter = document
+      .getElementById("searchStudentName")
+      .value.toLowerCase();
+    const emailFilter = document
+      .getElementById("searchStudentEmail")
+      .value.toLowerCase();
+    const departmentFilter = document.getElementById(
+      "filterStudentDepartment"
+    ).value;
+    const yearFilter = document.getElementById("filterStudentYear").value;
+
     let filteredStudents = allStudents;
-    
+
     if (nameFilter) {
-        filteredStudents = filteredStudents.filter(student => 
-            student.name.toLowerCase().includes(nameFilter)
-        );
+      filteredStudents = filteredStudents.filter((student) =>
+        student.name.toLowerCase().includes(nameFilter)
+      );
     }
-    
+
     if (emailFilter) {
-        filteredStudents = filteredStudents.filter(student => 
-            student.email.toLowerCase().includes(emailFilter)
-        );
+      filteredStudents = filteredStudents.filter((student) =>
+        student.email.toLowerCase().includes(emailFilter)
+      );
     }
-    
+
     if (departmentFilter) {
-        filteredStudents = filteredStudents.filter(student => 
-            student.department === departmentFilter
-        );
+      filteredStudents = filteredStudents.filter(
+        (student) => student.department === departmentFilter
+      );
     }
-    
+
     if (yearFilter) {
-        filteredStudents = filteredStudents.filter(student => 
-            student.year === yearFilter
-        );
+      filteredStudents = filteredStudents.filter(
+        (student) => student.year === yearFilter
+      );
     }
-    
+
     displayStudents(filteredStudents);
-}
+  }
 
-function resetStudentFilters() {
-    document.getElementById('searchStudentName').value = '';
-    document.getElementById('searchStudentEmail').value = '';
-    document.getElementById('filterStudentDepartment').value = '';
-    document.getElementById('filterStudentYear').value = '';
+  function resetStudentFilters() {
+    document.getElementById("searchStudentName").value = "";
+    document.getElementById("searchStudentEmail").value = "";
+    document.getElementById("filterStudentDepartment").value = "";
+    document.getElementById("filterStudentYear").value = "";
     displayStudents(allStudents);
-}
+  }
 
-function showAddStudentModal() {
-    document.getElementById('studentModalLabel').textContent = 'Add Student';
-    document.getElementById('studentForm').reset();
-    document.getElementById('studentId').value = '';
-    const modal = new bootstrap.Modal(document.getElementById('studentModal'));
+  function showAddStudentModal() {
+    document.getElementById("studentModalLabel").textContent = "Add Student";
+    document.getElementById("studentForm").reset();
+    document.getElementById("studentId").value = "";
+    const modal = new bootstrap.Modal(document.getElementById("studentModal"));
     modal.show();
-}
+  }
 
-function editStudent(id) {
+  function editStudent(id) {
     fetch(`/api/students/${id}`)
-        .then(response => response.json())
-        .then(student => {
-            document.getElementById('studentModalLabel').textContent = 'Edit Student';
-            document.getElementById('studentId').value = student.id;
-            document.getElementById('studentName').value = student.name;
-            document.getElementById('studentEmail').value = student.email;
-            document.getElementById('studentPhone').value = student.phone;
-            document.getElementById('studentDepartment').value = student.department;
-            document.getElementById('studentYear').value = student.year;
-            
-            const modal = new bootstrap.Modal(document.getElementById('studentModal'));
-            modal.show();
-        })
-        .catch(error => {
-            console.error('Error loading student:', error);
-            showNotification('Error loading student', 'danger');
-        });
-}
+      .then((response) => response.json())
+      .then((student) => {
+        document.getElementById("studentModalLabel").textContent =
+          "Edit Student";
+        document.getElementById("studentId").value = student.id;
+        document.getElementById("studentName").value = student.name;
+        document.getElementById("studentEmail").value = student.email;
+        document.getElementById("studentPhone").value = student.phone;
+        document.getElementById("studentDepartment").value = student.department;
+        document.getElementById("studentYear").value = student.year;
 
-function saveStudent() {
-    const id = document.getElementById('studentId').value;
+        const modal = new bootstrap.Modal(
+          document.getElementById("studentModal")
+        );
+        modal.show();
+      })
+      .catch((error) => {
+        console.error("Error loading student:", error);
+        showNotification("Error loading student", "danger");
+      });
+  }
+
+  function saveStudent() {
+    const id = document.getElementById("studentId").value;
     const studentData = {
-        name: document.getElementById('studentName').value,
-        email: document.getElementById('studentEmail').value,
-        phone: document.getElementById('studentPhone').value,
-        department: document.getElementById('studentDepartment').value,
-        year: document.getElementById('studentYear').value
+      name: document.getElementById("studentName").value,
+      email: document.getElementById("studentEmail").value,
+      phone: document.getElementById("studentPhone").value,
+      department: document.getElementById("studentDepartment").value,
+      year: document.getElementById("studentYear").value,
     };
-    
-    // Validate required fields
-    if (!studentData.name || !studentData.email || !studentData.phone || 
-        !studentData.department || !studentData.year) {
-        showNotification('Please fill in all required fields', 'warning');
-        return;
-    }
-    
-    const url = id ? `/api/students/${id}` : '/api/students';
-    const method = id ? 'PUT' : 'POST';
-    
-    fetch(url, {
-        method: method,
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(studentData)
-    })
-    .then(response => {
-        if (response.ok) {
-            return response.json();
-        } else {
-            return response.json().then(err => { throw new Error(err.error || 'Failed to save student'); });
-        }
-    })
-    .then(student => {
-        showNotification('Student saved successfully', 'success');
-        bootstrap.Modal.getInstance(document.getElementById('studentModal')).hide();
-        loadStudentsData();
-    })
-    .catch(error => {
-        console.error('Error saving student:', error);
-        showNotification(error.message || 'Error saving student', 'danger');
-    });
-}
 
-function deleteStudent(id) {
-    if (confirm('Are you sure you want to delete this student?')) {
-        fetch(`/api/students/${id}`, {
-            method: 'DELETE'
+    // Validate required fields
+    if (
+      !studentData.name ||
+      !studentData.email ||
+      !studentData.phone ||
+      !studentData.department ||
+      !studentData.year
+    ) {
+      showNotification("Please fill in all required fields", "warning");
+      return;
+    }
+
+    const url = id ? `/api/students/${id}` : "/api/students";
+    const method = id ? "PUT" : "POST";
+
+    fetch(url, {
+      method: method,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(studentData),
+    })
+      .then((response) => {
+        if (response.ok) {
+          return response.json();
+        } else {
+          return response.json().then((err) => {
+            throw new Error(err.error || "Failed to save student");
+          });
+        }
+      })
+      .then((student) => {
+        showNotification("Student saved successfully", "success");
+        bootstrap.Modal.getInstance(
+          document.getElementById("studentModal")
+        ).hide();
+        loadStudentsData();
+      })
+      .catch((error) => {
+        console.error("Error saving student:", error);
+        showNotification(error.message || "Error saving student", "danger");
+      });
+  }
+
+  function deleteStudent(id) {
+    if (confirm("Are you sure you want to delete this student?")) {
+      fetch(`/api/students/${id}`, {
+        method: "DELETE",
+      })
+        .then((response) => {
+          if (response.ok) {
+            showNotification("Student deleted successfully", "success");
+            loadStudentsData();
+          } else {
+            throw new Error("Failed to delete student");
+          }
         })
-        .then(response => {
-            if (response.ok) {
-                showNotification('Student deleted successfully', 'success');
-                loadStudentsData();
-            } else {
-                throw new Error('Failed to delete student');
-            }
-        })
-        .catch(error => {
-            console.error('Error deleting student:', error);
-            showNotification('Error deleting student', 'danger');
+        .catch((error) => {
+          console.error("Error deleting student:", error);
+          showNotification("Error deleting student", "danger");
         });
     }
-}
+  }
 
-function showUploadModal(type) {
-    document.getElementById('uploadForm').reset();
-    const ut = document.getElementById('uploadType');
-    if (ut) ut.value = type || 'students';
-    const modal = new bootstrap.Modal(document.getElementById('uploadModal'));
+  function showUploadModal(type) {
+    document.getElementById("uploadForm").reset();
+    const ut = document.getElementById("uploadType");
+    if (ut) ut.value = type || "students";
+    const modal = new bootstrap.Modal(document.getElementById("uploadModal"));
     modal.show();
-}
+  }
 
-function uploadFile(type) {
-    const fileInput = document.getElementById('uploadFile');
+  function uploadFile(type) {
+    const fileInput = document.getElementById("uploadFile");
     const file = fileInput.files[0];
-    
+
     if (!file) {
-        showNotification('Please select a file to upload', 'warning');
-        return;
+      showNotification("Please select a file to upload", "warning");
+      return;
     }
-    
+
     const formData = new FormData();
-    formData.append('file', file);
-    const chosenType = (document.getElementById('uploadType') && document.getElementById('uploadType').value) || type || 'students';
+    formData.append("file", file);
+    const chosenType =
+      (document.getElementById("uploadType") &&
+        document.getElementById("uploadType").value) ||
+      type ||
+      "students";
 
     // Route to v2 endpoint for timetable when toggle is on
-    const useV2 = (document.getElementById('useV2Upload') && document.getElementById('useV2Upload').checked);
+    const useV2 =
+      document.getElementById("useV2Upload") &&
+      document.getElementById("useV2Upload").checked;
     let url = `/api/upload/${chosenType}`;
-    if (chosenType === 'timetable' && useV2) {
-        url = '/api/v2/upload/timetable';
+    if (chosenType === "timetable" && useV2) {
+      url = "/api/v2/upload/timetable";
     }
 
     fetch(url, {
-        method: 'POST',
-        body: formData
+      method: "POST",
+      body: formData,
     })
-    .then(response => response.json())
-    .then(data => {
+      .then((response) => response.json())
+      .then((data) => {
         if (data.error) {
-            showNotification(data.error, 'danger');
+          showNotification(data.error, "danger");
         } else {
-            showNotification(data.message || 'Upload successful', 'success');
-            bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
-            if (chosenType === 'students') {
-                loadStudentsData();
-            }
+          showNotification(data.message || "Upload successful", "success");
+          bootstrap.Modal.getInstance(
+            document.getElementById("uploadModal")
+          ).hide();
+          if (chosenType === "students") {
+            loadStudentsData();
+          }
         }
-    })
-    .catch(error => {
-        console.error('Error uploading file:', error);
-        showNotification('Error uploading file', 'danger');
-    });
-}
-  </script>
-  <!-- DataTables optional enhancement -->
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const tbl = document.querySelector('#uploadedStudentsTable');
-      if (tbl && window.jQuery && typeof jQuery.fn.DataTable === 'function') {
-        jQuery('#uploadedStudentsTable').DataTable({
-          pageLength: 25,
-          order: [[0, 'asc']],
-          scrollY: '60vh',
-          scrollCollapse: true,
-          fixedHeader: true
-        });
-      }
-    });
-  </script>
+      })
+      .catch((error) => {
+        console.error("Error uploading file:", error);
+        showNotification("Error uploading file", "danger");
+      });
+  }
+</script>
+<!-- DataTables optional enhancement -->
+<link
+  rel="stylesheet"
+  href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"
+/>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const tbl = document.querySelector("#uploadedStudentsTable");
+    if (tbl && window.jQuery && typeof jQuery.fn.DataTable === "function") {
+      jQuery("#uploadedStudentsTable").DataTable({
+        pageLength: 25,
+        order: [[0, "asc"]],
+        scrollY: "60vh",
+        scrollCollapse: true,
+        fixedHeader: true,
+      });
+    }
+  });
+</script>
 {% endblock %}
