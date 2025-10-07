@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exam Seating Allocation - Upload</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet" />
+</head>
+<body>
+  <div class="container py-5">
+    <h1 class="mb-4">Exam Seating Allocation</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="card">
+      <div class="card-body">
+        <form action="{{ url_for('allocate') }}" method="post" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label for="file" class="form-label">Upload Excel/CSV</label>
+            <input class="form-control" type="file" id="file" name="file" accept=".csv,.xlsx,.xls" required />
+            <div class="form-text">Expected columns: SNO, ENQ, Reg_No, Name of the Student, Prog & Year, CLASS CODE, year, Degree, Dept, DEPT ORD, CLASS ORD, SUB ORD, SUB_CODE, SUB_TITLE, DATE, SESS</div>
+          </div>
+          <div class="mb-3">
+            <label for="capacity" class="form-label">Hall Capacity</label>
+            <input type="number" class="form-control" id="capacity" name="capacity" value="{{ default_capacity }}" min="1" />
+            <div class="form-text">Default is 30 seats per hall.</div>
+          </div>
+          <button type="submit" class="btn btn-primary">Allocate Seats</button>
+        </form>
+      </div>
+    </div>
+
+    <hr class="my-4" />
+    <h5>Allocation Rules</h5>
+    <ul>
+      <li><strong>Group by subject</strong> (SUB_CODE) within each session (DATE+SESS)</li>
+      <li><strong>Sort</strong> by DATE, SESS (FN before AN), SUB_CODE, then Reg_No</li>
+      <li><strong>Fill halls sequentially</strong> up to capacity; create new halls as needed</li>
+      <li><strong>Seat numbering restarts</strong> for each session</li>
+    </ul>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

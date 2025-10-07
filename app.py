@@ -17,9 +17,13 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 import zipfile
 import tempfile
+import json
 from pymongo import MongoClient, ASCENDING
 from pymongo.errors import DuplicateKeyError
 from bson.objectid import ObjectId
+from ems_app.blueprints.students import bp as students_v2_bp
+from ems_app.blueprints.allocation import bp as allocation_v2_bp
+from ems_app.extensions import init_mongo
 
 # ----------------------------------------
 # Helpers for Excel/CSV transformations
@@ -189,6 +193,14 @@ if USE_MONGO:
     # Ensure indexes
     mongo_db.students.create_index([('email', ASCENDING)], unique=True)
 
+# Make Mongo config available to ems_app
+app.config['MONGO_URI'] = MONGO_URI
+app.config['MONGO_DB_NAME'] = MONGO_DB_NAME
+try:
+    init_mongo(app)
+except Exception:
+    pass
+
 # File upload configuration
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -196,6 +208,10 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 # Create upload folder if it doesn't exist
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
+
+# Register additive v2 (Mongo-first) endpoints
+app.register_blueprint(students_v2_bp)
+app.register_blueprint(allocation_v2_bp)
 
 # Initialize SQLAlchemy
 db = SQLAlchemy(app)
@@ -464,7 +480,54 @@ def students():
     # Check if admin is logged in
     if 'admin_id' not in session:
         return redirect(url_for('login'))
-    return render_template('students.html')
+    # Try to load the most recently uploaded 16-column sheet view
+    desired_cols = [
+        'SNO','ENQ','Reg_No','Name of the Student','Prog & Year','CLASS CODE','year','Degree','Dept',
+        'DEPT ORD','CLASS ORD','SUB ORD','SUB_CODE','SUB_TITLE','DATE','SESS'
+    ]
+    rows = []
+    columns = desired_cols.copy()
+    json_path = session.get('last_students_json')
+    try:
+        if json_path and os.path.exists(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                rows = json.load(f)
+            if rows:
+                # Keep only the columns present in data, preserving desired order
+                present = [c for c in desired_cols if c in rows[0]]
+                if present:
+                    columns = present
+    except Exception:
+        rows = []
+        columns = desired_cols.copy()
+
+    # Build subject grouping summary: by (SUB_CODE, SUB_TITLE, DATE, SESS)
+    subjects_map = {}
+    for r in rows or []:
+        key = (
+            r.get('SUB_CODE', ''),
+            r.get('SUB_TITLE', ''),
+            r.get('DATE', ''),
+            r.get('SESS', ''),
+        )
+        subjects_map[key] = subjects_map.get(key, 0) + 1
+    subjects = [
+        {
+            'SUB_CODE': k[0],
+            'SUB_TITLE': k[1],
+            'DATE': k[2],
+            'SESS': k[3],
+            'TOTAL': v,
+        }
+        for k, v in sorted(subjects_map.items(), key=lambda x: (x[0][2], x[0][3], x[0][0], x[0][1]))
+    ]
+
+    # Calculate total students count
+    total_uploaded = len(rows) if rows else 0
+    total_db = len(Student.query.all()) if not USE_MONGO else len(list(mongo_db.students.find()))
+    total_students = total_uploaded + total_db
+
+    return render_template('students.html', columns=columns, rows=rows, subjects=subjects, total_students=total_students)
 
 @app.route('/staff')
 def staff():
@@ -508,7 +571,14 @@ def attendance():
         return redirect(url_for('login'))
     return render_template('attendance.html')
 
-# Student API Routes
+@app.route('/uploaded_students')
+def uploaded_students():
+    # Check if admin is logged in
+    if 'admin_id' not in session:
+        return redirect(url_for('login'))
+    # Fetch all students from database
+    students = Student.query.all()
+    return render_template('uploaded_students.html', students=students)
 @app.route('/api/students', methods=['GET'])
 def get_students():
     try:
@@ -657,6 +727,10 @@ def delete_student(id):
             return '', 204
         else:
             student = Student.query.get_or_404(id)
+            # Delete related records first to satisfy foreign key constraints
+            Attendance.query.filter_by(student_id=id).delete()
+            HallSeat.query.filter_by(student_id=id).delete()
+            StudentSubject.query.filter_by(student_id=id).delete()
             db.session.delete(student)
             db.session.commit()
             return '', 204
@@ -1193,6 +1267,43 @@ def upload_students():
         file.save(file_path)
         
         try:
+            # Opportunistically persist a 16-column display JSON for the Students page
+            try:
+                raw = None
+                if filename.endswith('.csv'):
+                    raw = pd.read_csv(file_path, dtype=str)
+                elif filename.endswith(('.xlsx', '.xls')):
+                    raw = pd.read_excel(file_path, dtype=str)
+                if raw is not None and len(raw.columns) > 0:
+                    desired_cols = [
+                        'SNO','ENQ','Reg_No','Name of the Student','Prog & Year','CLASS CODE','year','Degree','Dept',
+                        'DEPT ORD','CLASS ORD','SUB ORD','SUB_CODE','SUB_TITLE','DATE','SESS'
+                    ]
+                    cols_lower = {str(c).strip().lower(): c for c in raw.columns}
+                    def get_src(name: str):
+                        keys = [name,
+                                name.replace('_',' '),
+                                name.replace('&','and'),
+                                name.replace('  ',' ')]
+                        for k in keys:
+                            lk = k.strip().lower()
+                            if lk in cols_lower:
+                                return cols_lower[lk]
+                        return None
+                    data = {}
+                    for dc in desired_cols:
+                        src = get_src(dc)
+                        if src:
+                            data[dc] = raw[src].astype(str)
+                        else:
+                            data[dc] = ""
+                    display_df2 = pd.DataFrame(data, columns=desired_cols).fillna("")
+                    json_path2 = os.path.join(app.config['UPLOAD_FOLDER'], 'last_students.json')
+                    display_df2.to_json(json_path2, orient='records', force_ascii=False)
+                    session['last_students_json'] = json_path2
+            except Exception:
+                pass
+
             # Transform to standardized columns
             std_df = transform_excel(file_path)
 
@@ -1797,6 +1908,48 @@ def upload_timetable():
         if missing:
             return jsonify({'error': f'Missing required columns: {", ".join(missing)}'}), 400
 
+        # Build a consistent 16-column view for Students page and persist to JSON
+        try:
+            desired_cols = [
+                'SNO','ENQ','Reg_No','Name of the Student','Prog & Year','CLASS CODE','year','Degree','Dept',
+                'DEPT ORD','CLASS ORD','SUB ORD','SUB_CODE','SUB_TITLE','DATE','SESS'
+            ]
+            # Helper to fetch by flexible naming using resolve()
+            col_map = {}
+            col_map['SNO'] = resolve(df.columns, 'sno')
+            col_map['ENQ'] = resolve(df.columns, 'enq')
+            col_map['Reg_No'] = reg_col
+            col_map['Name of the Student'] = name_col
+            col_map['Prog & Year'] = resolve(df.columns, 'prog & year', 'prog & year.')
+            col_map['CLASS CODE'] = resolve(df.columns, 'class code', 'class_code', 'class')
+            col_map['year'] = year_col
+            col_map['Degree'] = resolve(df.columns, 'degree')
+            col_map['Dept'] = dept_col
+            col_map['DEPT ORD'] = resolve(df.columns, 'dept ord', 'dept_ord')
+            col_map['CLASS ORD'] = resolve(df.columns, 'class ord', 'class_ord')
+            col_map['SUB ORD'] = resolve(df.columns, 'sub ord', 'sub_ord')
+            col_map['SUB_CODE'] = sub_code_col
+            col_map['SUB_TITLE'] = sub_title_col
+            col_map['DATE'] = date_col
+            col_map['SESS'] = sess_col
+
+            data_dict = {}
+            for dc in desired_cols:
+                src = col_map.get(dc)
+                if src:
+                    data_dict[dc] = df[src].astype(str)
+                else:
+                    data_dict[dc] = ""
+            display_df = pd.DataFrame(data_dict, columns=desired_cols).fillna("")
+
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            json_path = os.path.join(app.config['UPLOAD_FOLDER'], 'last_students.json')
+            display_df.to_json(json_path, orient='records', force_ascii=False)
+            session['last_students_json'] = json_path
+        except Exception:
+            # Non-fatal; continue normal timetable processing
+            pass
+
         # Fetch halls and staff for allocation
         halls = Hall.query.order_by(Hall.capacity.desc()).all()
         if not halls:
@@ -1843,8 +1996,10 @@ def upload_timetable():
             exam_time = datetime.strptime(time_str, '%H:%M').time()
 
             # Create an Exam per hall allocation chunk; we will split the group by hall capacities
+            # Requirement: allocate in ascending order by Reg_No
             students_in_slot = []
-            for _, r in group.iterrows():
+            group_sorted = group.sort_values(by=[reg_col], kind='mergesort')
+            for _, r in group_sorted.iterrows():
                 reg_no = str(r[reg_col]).strip()
                 student_name = str(r[name_col]).strip()
                 # Find or create student (using reg_no as email surrogate)

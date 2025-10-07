@@ -7,6 +7,84 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-md-12">
+            <!-- Total Students Count Card -->
+            <div class="card mb-3 bg-light">
+                <div class="card-body text-center">
+                    <h4 class="card-title text-primary">Total Students</h4>
+                    <h2 class="card-text text-success">{{ total_students }}</h2>
+                    <small class="text-muted">Combined from uploaded data and database</small>
+                </div>
+            </div>
+            {% if rows %}
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Uploaded Excel Data</h5>
+                    <div>
+                        <a class="btn btn-outline-secondary me-2" href="{{ url_for('index') }}">Back to Home</a>
+                        <a class="btn btn-primary" href="{{ url_for('hall_tickets') }}">Go to Seat Allocation</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <input id="studentsSearch" type="text" class="form-control" placeholder="Search by Name / Reg_No / Dept / SUB_CODE" oninput="filterUploadedStudents()">
+                        </div>
+                    </div>
+                    <div class="table-responsive" style="max-height:70vh;">
+                        <table id="uploadedStudentsTable" class="table table-striped table-bordered table-hover mb-0">
+                            <thead class="table-light" style="position:sticky; top:0; z-index:1;">
+                                <tr>
+                                    {% for col in columns %}
+                                        <th>{{ col }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for r in rows %}
+                                    <tr>
+                                        {% for col in columns %}
+                                            <td>{{ r[col] }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Subjects Summary (by SUB_CODE / SUB_TITLE / DATE / SESS)</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height:50vh;">
+                        <table class="table table-striped table-bordered table-hover mb-0">
+                            <thead class="table-light" style="position:sticky; top:0; z-index:1;">
+                                <tr>
+                                    <th>SUB_CODE</th>
+                                    <th>SUB_TITLE</th>
+                                    <th>DATE</th>
+                                    <th>SESS</th>
+                                    <th>TOTAL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for s in subjects %}
+                                    <tr>
+                                        <td>{{ s.SUB_CODE }}</td>
+                                        <td>{{ s.SUB_TITLE }}</td>
+                                        <td>{{ s.DATE }}</td>
+                                        <td>{{ s.SESS }}</td>
+                                        <td>{{ s.TOTAL }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="card-title mb-0">Students List</h5>
@@ -99,6 +177,13 @@
                             Choose Timetable for sheets with columns like Reg_No, Name of the Student, Dept, Year, SUB_CODE, SUB_TITLE, DATE, SESS, [hall_no], [seat_no]
                         </div>
                     </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="useV2Upload">
+                        <label class="form-check-label" for="useV2Upload">
+                            Use v2 (Mongo engine) for Timetable upload
+                        </label>
+                        <div class="form-text">When checked and Upload Type is Timetable, the file will be sent to /api/v2/upload/timetable</div>
+                    </div>
                     <div class="mb-3">
                         <label for="uploadFile" class="form-label">Select CSV or Excel file</label>
                         <input type="file" class="form-control" id="uploadFile" accept=".csv, .xlsx, .xls" required>
@@ -170,13 +255,13 @@
 <script>
 // Load students when page loads
 document.addEventListener('DOMContentLoaded', function() {
-    loadStudents();
+    loadStudentsData();
     loadStudentDepartments();
 });
 
 let allStudents = []; // Store all students for filtering
 
-function loadStudents() {
+function loadStudentsData() {
     fetch('/api/students')
         .then(response => response.json())
         .then(students => {
@@ -358,7 +443,7 @@ function saveStudent() {
     .then(student => {
         showNotification('Student saved successfully', 'success');
         bootstrap.Modal.getInstance(document.getElementById('studentModal')).hide();
-        loadStudents();
+        loadStudentsData();
     })
     .catch(error => {
         console.error('Error saving student:', error);
@@ -374,7 +459,7 @@ function deleteStudent(id) {
         .then(response => {
             if (response.ok) {
                 showNotification('Student deleted successfully', 'success');
-                loadStudents();
+                loadStudentsData();
             } else {
                 throw new Error('Failed to delete student');
             }
@@ -407,7 +492,14 @@ function uploadFile(type) {
     formData.append('file', file);
     const chosenType = (document.getElementById('uploadType') && document.getElementById('uploadType').value) || type || 'students';
 
-    fetch(`/api/upload/${chosenType}`, {
+    // Route to v2 endpoint for timetable when toggle is on
+    const useV2 = (document.getElementById('useV2Upload') && document.getElementById('useV2Upload').checked);
+    let url = `/api/upload/${chosenType}`;
+    if (chosenType === 'timetable' && useV2) {
+        url = '/api/v2/upload/timetable';
+    }
+
+    fetch(url, {
         method: 'POST',
         body: formData
     })
@@ -419,7 +511,7 @@ function uploadFile(type) {
             showNotification(data.message || 'Upload successful', 'success');
             bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
             if (chosenType === 'students') {
-                loadStudents();
+                loadStudentsData();
             }
         }
     })
@@ -428,3 +520,23 @@ function uploadFile(type) {
         showNotification('Error uploading file', 'danger');
     });
 }
+  </script>
+  <!-- DataTables optional enhancement -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const tbl = document.querySelector('#uploadedStudentsTable');
+      if (tbl && window.jQuery && typeof jQuery.fn.DataTable === 'function') {
+        jQuery('#uploadedStudentsTable').DataTable({
+          pageLength: 25,
+          order: [[0, 'asc']],
+          scrollY: '60vh',
+          scrollCollapse: true,
+          fixedHeader: true
+        });
+      }
+    });
+  </script>
+{% endblock %}
